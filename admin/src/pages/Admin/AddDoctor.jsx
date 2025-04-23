@@ -9,6 +9,7 @@ const AddDoctor = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [experience, setExperience] = useState("1 Year");
   const [fees, setFees] = useState("");
   const [about, setAbout] = useState("");
@@ -52,6 +53,11 @@ const AddDoctor = () => {
     }
     if (!password) {
       newErrors.password = "Password is required";
+    }
+    if (!confirmPassword) {
+      newErrors.confirmPassword = "Please confirm your password";
+    } else if (password !== confirmPassword) {
+      newErrors.confirmPassword = "Passwords do not match";
     }
     if (!fees || isNaN(fees) || fees <= 0) {
       newErrors.fees = "Please enter a valid fee amount";
@@ -112,6 +118,7 @@ const AddDoctor = () => {
         setName('');
         setEmail('');
         setPassword('');
+        setConfirmPassword('');
         setAddress1('');
         setAddress2('');
         setDegree('');
@@ -192,15 +199,15 @@ const AddDoctor = () => {
               {errors.password && <p className="text-red-500 text-sm">{errors.password}</p>}
             </div>
             <div className="flex-1 flex flex-col gap-1">
-              <p>Doctor Password</p>
+              <p>Confirm Password</p>
               <input
-                onChange={(e) => setPassword(e.target.value)}
-                value={password}
-                className={`border rounded px-2 py-2 ${errors.password ? 'border-red-500' : ''}`}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                value={confirmPassword}
+                className={`border rounded px-2 py-2 ${errors.confirmPassword ? 'border-red-500' : ''}`}
                 type="password"
-                placeholder="Password"
+                placeholder="Confirm Password"
               />
-              {errors.password && <p className="text-red-500 text-sm">{errors.password}</p>}
+              {errors.confirmPassword && <p className="text-red-500 text-sm">{errors.confirmPassword}</p>}
             </div>
             <div className="flex-1 flex flex-col gap-1">
               <p>Experience</p>
