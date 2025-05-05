@@ -71,18 +71,18 @@ const Inquiry = () => {
       <div className="max-w-7xl mx-auto py-16 px-4 grid grid-cols-1 md:grid-cols-3 gap-8">
         {[
           {
-            title: "Book a Session",
-            desc: "Schedule a therapy session with our experts.",
+            title: "Start Your Healing Journey",
+            desc: "Take the first step toward a brighter, healthier you. We're here to listen.",
             img: "https://static.wixstatic.com/media/dd7bda_a1efa011ef7042a0867355a46d46e5bf~mv2.jpg/v1/fill/w_568,h_378,al_c,q_80,usm_0.66_1.00_0.01,enc_avif,quality_auto/dd7bda_a1efa011ef7042a0867355a46d46e5bf~mv2.jpg",
           },
           {
-            title: "Share Your Needs",
-            desc: "Let us know how we can support you.",
+            title: "Tell Us Your Story",
+            desc: "Share your thoughts, feelings, and goals — so we can guide you with care.",
             img: "https://images.unsplash.com/photo-1593642532973-d31b6557fa68?q=80&w=2070&auto=format&fit=crop",
           },
           {
-            title: "Upload a Photo",
-            desc: "Add a personal touch to your message.",
+            title: "Add Your Special Touch",
+            desc: "Upload a photo or document to personalize your inquiry.",
             img: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=2070&auto=format&fit=crop",
           },
         ].map((card, index) => (
