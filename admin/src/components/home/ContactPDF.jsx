@@ -57,25 +57,28 @@ const ContactPDF = ({ contact }) => (
   <Document>
     <Page size="A4" style={styles.page}>
       {/* Header */}
-      <Text style={styles.header}>FeelsFIX Contact Details 📩</Text>
+      <Text style={styles.header}>FeelsFIX Contact Details </Text>
 
       {/* Contact Information */}
       <View style={styles.section}>
-        <Text style={styles.label}>Name 🖋️:</Text>
+        <Text style={styles.label}>Name :</Text>
         <Text style={styles.text}>{contact.name}</Text>
 
-        <Text style={styles.label}>Email 📧:</Text>
+        <Text style={styles.label}>Email :</Text>
         <Text style={styles.text}>{contact.email}</Text>
 
-        <Text style={styles.label}>Phone 📞:</Text>
+        <Text style={styles.label}>Phone :</Text>
         <Text style={styles.text}>{contact.phone}</Text>
 
-        <Text style={styles.label}>Message 💬:</Text>
+        <Text style={styles.label}>Category :</Text>
+        <Text style={styles.text}>{contact.category}</Text>
+
+        <Text style={styles.label}>Message :</Text>
         <Text style={styles.text}>{contact.message}</Text>
 
         
 
-        <Text style={styles.label}>Submitted ⏰:</Text>
+        <Text style={styles.label}>Submitted :</Text>
         <Text style={styles.text}>
           {new Date(contact.createdAt).toLocaleString()}
         </Text>
@@ -83,7 +86,7 @@ const ContactPDF = ({ contact }) => (
 
       {/* Footer */}
       <Text style={styles.footer}>
-        Thank you for reaching out to FeelsFIX! 💜
+        Thank you for reaching out to FeelsFIX! 
       </Text>
     </Page>
   </Document>
@@ -94,6 +97,7 @@ ContactPDF.propTypes = {
     name: PropTypes.string.isRequired,
     email: PropTypes.string.isRequired,
     phone: PropTypes.string.isRequired,
+    category: PropTypes.string.isRequired,
     message: PropTypes.string.isRequired,
     photo: PropTypes.string,
     createdAt: PropTypes.string.isRequired, // Assuming createdAt is provided
