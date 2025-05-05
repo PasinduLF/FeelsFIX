@@ -95,10 +95,10 @@ const ContactTable = ({ contacts }) => {
                 <td className="border-b border-gray-200 p-4 text-gray-700 hidden md:table-cell">
                   {contact.photo ? (
                     <img
-                      src={`../public/images/${contact.photo}`}
-                      alt="Contact photo"
-                      className="w-16 h-16 object-cover rounded-md shadow-sm"
-                    />
+                    src={`/images/${contact.photo}`}
+                    alt="Contact photo"
+                    className="w-16 h-16 object-cover rounded-md shadow-sm"
+                  />
                   ) : (
                     "No photo"
                   )}

@@ -32,7 +32,7 @@ const ContactSingleCard = ({ contact }) => {
       <div className="mb-5">
         {contact.photo ? (
           <img
-            src={`../public/images/${contact.photo}`} // Updated path
+            src={`/images/${contact.photo}`}     // Updated path
             alt={`${contact.name}'s message`}
             className="w-full h-48 object-cover rounded-lg shadow-md transition-transform duration-300 hover:scale-105"
           />
