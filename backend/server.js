@@ -6,6 +6,7 @@ import connectCloudinary from './config/cloudinary.js'
 import addminRouter from './routes/adminRoute.js'
 import doctorRouter from './routes/doctorRoute.js'
 import userRouter from './routes/userRoute.js'
+import contactRouter from './routes/contact.js'
 
 //app config
 const app = express()
@@ -22,6 +23,7 @@ app.use(cors())
 app.use('/api/admin',addminRouter)
 app.use('/api/doctor',doctorRouter)
 app.use('/api/user',userRouter)
+app.use("/contact", contactRouter);
 
 app.get('/',(req,res)=>{
     res.send('API Working')

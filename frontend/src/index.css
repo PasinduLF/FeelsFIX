@@ -21,3 +21,62 @@
         @apply text-white bg-primary
     }
 }
+  
+  .contact-info {
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    margin: 10px;
+    background-color: transparent;
+  }
+  
+  .social-media {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  
+  .social-media a {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: #f5f5f5;
+    color: #333;
+    text-decoration: none;
+    transition: all 0.3s ease;
+  }
+  
+  .social-media a:hover {
+    background-color: #333;
+    color: #fff;
+    transform: translateY(-3px);
+  }
+  
+  .social-media-icons {
+    font-size: 18px;
+  }
+  
+  .footer-links, .legal-links {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+  }
+  
+  .footer-link {
+    color: #b7e4c7; /* Light green */
+    text-decoration: none;
+    transition: color 0.2s ease-in-out;
+  }
+  
+  .footer-link:hover {
+    color: #ffffff;
+  }
+  
+  .powered-by {
+    text-align: center;
+    margin: 10px 0;
+    font-size: 0.9rem;
+  }
