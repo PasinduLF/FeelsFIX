@@ -6,6 +6,7 @@ import {v2 as cloudinary} from 'cloudinary'
 import doctorModel from '../models/doctorModel.js'
 import appointmentModel from '../models/appointmentModel.js'
 import paymentModel from '../models/paymentModel.js'
+import { sendVerificationEmail } from '../utils/emailConfig.js'
 
 //API to register user
 const registerUser = async(req , res)=>{
@@ -243,4 +244,116 @@ const addPayment = async (req, res) => {
     }
   };
 
-export {registerUser,loginUser,getProfile,updateProfile,bookAppointment,listAppointment,cancelAppointment,addPayment}
+//API for forgot password
+const forgotPassword = async(req, res) => {
+    try {
+        const { email } = req.body;
+        
+        if (!email) {
+            return res.json({ success: false, message: "Email is required" });
+        }
+
+        // Check if email configuration is set up
+        if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+            console.error('Email configuration missing:', {
+                hasEmailUser: !!process.env.EMAIL_USER,
+                hasEmailPassword: !!process.env.EMAIL_PASSWORD,
+                emailUser: process.env.EMAIL_USER
+            });
+            return res.json({ 
+                success: false, 
+                message: "Email service is not configured. Please contact support."
+            });
+        }
+
+        console.log('Looking up user with email:', email);
+        const user = await userModel.findOne({ email });
+        if (!user) {
+            console.log('User not found for email:', email);
+            return res.json({ success: false, message: "User not found" });
+        }
+
+        console.log('User found, generating verification code');
+        // Generate a 6-digit verification code
+        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+        
+        // Store the verification code in the user document
+        user.resetPasswordCode = verificationCode;
+        user.resetPasswordExpires = Date.now() + 3600000; // Code expires in 1 hour
+        await user.save();
+        console.log('Verification code saved to user document');
+
+        // Send verification code via email
+        console.log('Attempting to send verification email');
+        const emailSent = await sendVerificationEmail(email, verificationCode);
+        
+        if (!emailSent) {
+            console.log('Email sending failed, cleaning up verification code');
+            // If email fails, remove the verification code
+            user.resetPasswordCode = undefined;
+            user.resetPasswordExpires = undefined;
+            await user.save();
+            
+            return res.json({ 
+                success: false, 
+                message: "Failed to send verification code. Please try again later."
+            });
+        }
+
+        console.log('Password reset process completed successfully');
+        res.json({ 
+            success: true, 
+            message: "Verification code has been sent to your email"
+        });
+
+    } catch (error) {
+        console.error('Forgot password error:', {
+            message: error.message,
+            stack: error.stack,
+            code: error.code
+        });
+        res.json({ 
+            success: false, 
+            message: "An error occurred while processing your request. Please try again later."
+        });
+    }
+};
+
+//API for reset password
+const resetPassword = async(req, res) => {
+    try {
+        const { email, code, newPassword } = req.body;
+
+        if (!email || !code || !newPassword) {
+            return res.json({ success: false, message: "All fields are required" });
+        }
+
+        const user = await userModel.findOne({ 
+            email,
+            resetPasswordCode: code,
+            resetPasswordExpires: { $gt: Date.now() }
+        });
+
+        if (!user) {
+            return res.json({ success: false, message: "Invalid or expired verification code" });
+        }
+
+        // Hash the new password
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+        // Update password and clear reset fields
+        user.password = hashedPassword;
+        user.resetPasswordCode = undefined;
+        user.resetPasswordExpires = undefined;
+        await user.save();
+
+        res.json({ success: true, message: "Password has been reset successfully" });
+
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+};
+
+export {registerUser,loginUser,getProfile,updateProfile,bookAppointment,listAppointment,cancelAppointment,addPayment,forgotPassword,resetPassword}

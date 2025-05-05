@@ -18,6 +18,7 @@ import ContactForm from './pages/ContactForm'
 import EditContact from './pages/EditContact'
 import DeleteContact from './pages/DeleteContact'
 import ShowContact from './pages/ShowContact'
+import ForgotPassword from './pages/ForgotPassword'
 
 function App() {
   return (
@@ -29,6 +30,7 @@ function App() {
         <Route path='/doctors' element={<Doctors/>}/>
         <Route path='/doctors/:speciality' element={<Doctors/>}/>
         <Route path='/login' element={<Login/>}/>
+        <Route path='/forgot-password' element={<ForgotPassword/>}/>
         <Route path='/about' element={<About/>}/>
         <Route path='/inquiry' element={<Inquiry/>}/>
         <Route path='/my-profile' element={<MyProfile/>}/>
