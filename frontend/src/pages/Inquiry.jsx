@@ -41,14 +41,14 @@ const Inquiry = () => {
 
       {/* Hero Section */}
       <div
-        className="hero min-h-[70vh] bg-cover bg-center relative"
+        className="hero min-h-[70vh] bg-cover bg-center relative flex items-center justify-center"
         style={{
           backgroundImage:
             "url(https://images.unsplash.com/photo-1507537297725-24a1c029d3ca?q=80&w=2070&auto=format&fit=crop)",
         }}
       >
-        <div className="hero-overlay bg-opacity-50 bg-black"></div>
-        <div className="hero-content text-center text-white">
+        <div className="hero-overlay bg-opacity-50 bg-black absolute inset-0"></div>
+        <div className="hero-content text-center text-white relative z-10">
           <div className="max-w-2xl">
             <h1 className="mb-6 text-5xl md:text-6xl font-extrabold leading-tight drop-shadow-lg">
               Connect with Care 
