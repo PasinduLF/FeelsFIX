@@ -5,7 +5,6 @@ import jwt from 'jsonwebtoken'
 import {v2 as cloudinary} from 'cloudinary'
 import doctorModel from '../models/doctorModel.js'
 import appointmentModel from '../models/appointmentModel.js'
-import paymentModel from '../models/paymentModel.js'
 import { sendVerificationEmail } from '../utils/emailConfig.js'
 
 //API to register user
@@ -194,55 +193,6 @@ const cancelAppointment = async(req,res)=>{
     }
 }
 
-  //API for adding payment
-const addPayment = async (req, res) => {
-    try {
-      const {
-        bank,
-        branch,
-        amount
-      } = req.body;
-      const imageFile = req.file;
-  
-      //checkin for all data to add doctor
-      if (
-        !bank ||
-        !branch ||
-        !amount
-      ) {
-        return res.json({ success: false, message: "Missing Details" });
-      }
-  
-      //validating strong password
-      if (amount>0) {
-        return res.json({
-          success: false,
-          message: "Please enter correct amount",
-        });
-      }
-  
-      //upload image to cloudinary
-      const imageUpload = await cloudinary.uploader.upload(imageFile.path, {
-        resource_type: "image",
-      });
-      const imageUrl = imageUpload.secure_url;
-  
-      const paymentData = {
-        bank,
-        branch,
-        image: imageUrl,
-        amount
-      };
-  
-      const newPayment = new PaymentModel(paymentData);
-      await newPayment.save();
-  
-      res.json({ success: true, message: "Payment Added" });
-    } catch (error) {
-      console.log(error);
-      res.json({ success: false, message: error.message });
-    }
-  };
 
 //API for forgot password
 const forgotPassword = async(req, res) => {
@@ -356,4 +306,31 @@ const resetPassword = async(req, res) => {
     }
 };
 
-export {registerUser,loginUser,getProfile,updateProfile,bookAppointment,listAppointment,cancelAppointment,addPayment,forgotPassword,resetPassword}
+//API for verify reset code
+const verifyResetCode = async(req, res) => {
+    try {
+        const { email, code } = req.body;
+
+        if (!email || !code) {
+            return res.json({ success: false, message: "Email and code are required" });
+        }
+
+        const user = await userModel.findOne({ 
+            email,
+            resetPasswordCode: code,
+            resetPasswordExpires: { $gt: Date.now() }
+        });
+
+        if (!user) {
+            return res.json({ success: false, message: "Invalid or expired verification code" });
+        }
+
+        res.json({ success: true, message: "Verification code is valid" });
+
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+};
+
+export {registerUser,loginUser,getProfile,updateProfile,bookAppointment,listAppointment,cancelAppointment,forgotPassword,resetPassword,verifyResetCode}

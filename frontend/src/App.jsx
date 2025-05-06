@@ -19,6 +19,7 @@ import EditContact from './pages/EditContact'
 import DeleteContact from './pages/DeleteContact'
 import ShowContact from './pages/ShowContact'
 import ForgotPassword from './pages/ForgotPassword'
+import RefundPaymentRequest from './pages/RefundPaymentRequest'
 
 function App() {
   return (
@@ -38,11 +39,12 @@ function App() {
         <Route path='/appointment/:docId' element={<Appointment/>}/>
         <Route path='/workshops' element={<Workshop/>}/>
         <Route path='/blogs' element={<Blogs/>}/>
-        <Route path='/payment' element={<Payment/>}/>
+        <Route path='/payment/:appointmentId' element={<Payment/>}/>
         <Route path="/contact/create" element={<ContactForm />} />
         <Route path="/contact/edit/:id" element={<EditContact />} />
         <Route path="/contact/details/:id" element={<ShowContact />} />
         <Route path="/contact/delete/:id" element={<DeleteContact />} />
+        <Route path="/refund-request" element={<RefundPaymentRequest/>}/>
       </Routes>
       <Footer/>
     </div>
