@@ -65,14 +65,14 @@ function Doctors() {
             Psychiatrists (M.D. or D.O.)
           </p>
           <p 
-            onClick={() => speciality === 'Marriage & Family Therapists' ? navigate('/doctors') : navigate('/doctors/Marriage & Family Therapists')} 
-            className={`w-[94vw] sm:w-auto pl-3 py-1.5 pr-16 border border-gray-300 rounded transition-all cursor-pointer ${speciality === "Marriage & Family Therapists" ? "bg-indigo-100 text-black" : ""}`}
+            onClick={() => speciality === 'Marriage and Family Therapists (MFT)' ? navigate('/doctors') : navigate('/doctors/Marriage and Family Therapists (MFT)')} 
+            className={`w-[94vw] sm:w-auto pl-3 py-1.5 pr-16 border border-gray-300 rounded transition-all cursor-pointer ${speciality === "Marriage and Family Therapists (MFT)" ? "bg-indigo-100 text-black" : ""}`}
           >
             Marriage & Family Therapists (MFT)
           </p>
           <p 
-            onClick={() => speciality === 'Child & Adolescent Therapists' ? navigate('/doctors') : navigate('/doctors/Child & Adolescent Therapists')} 
-            className={`w-[94vw] sm:w-auto pl-3 py-1.5 pr-16 border border-gray-300 rounded transition-all cursor-pointer ${speciality === "Child & Adolescent Therapists" ? "bg-indigo-100 text-black" : ""}`}
+            onClick={() => speciality === 'Child and Adolescent Therapists' ? navigate('/doctors') : navigate('/doctors/Child and Adolescent Therapists')} 
+            className={`w-[94vw] sm:w-auto pl-3 py-1.5 pr-16 border border-gray-300 rounded transition-all cursor-pointer ${speciality === "Child and Adolescent Therapists" ? "bg-indigo-100 text-black" : ""}`}
           >
             Child & Adolescent Therapists
           </p>
