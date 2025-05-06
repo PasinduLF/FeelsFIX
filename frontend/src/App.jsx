@@ -20,6 +20,9 @@ import DeleteContact from './pages/DeleteContact'
 import ShowContact from './pages/ShowContact'
 import ForgotPassword from './pages/ForgotPassword'
 import RefundPaymentRequest from './pages/RefundPaymentRequest'
+import PrivacyPolicy from './pages/PrivacyPolicy'
+import TermsOfService from './pages/TermsOfService'
+import CookiePolicy from './pages/CookiePolicy'
 
 function App() {
   return (
@@ -45,6 +48,9 @@ function App() {
         <Route path="/contact/details/:id" element={<ShowContact />} />
         <Route path="/contact/delete/:id" element={<DeleteContact />} />
         <Route path='/refund-request/:paymentId' element={<RefundPaymentRequest />} />
+        <Route path='/privacy-policy' element={<PrivacyPolicy />} />
+        <Route path='/terms-of-service' element={<TermsOfService />} />
+        <Route path='/cookies' element={<CookiePolicy />} />
       </Routes>
       <Footer/>
     </div>

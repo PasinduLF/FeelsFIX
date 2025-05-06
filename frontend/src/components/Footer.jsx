@@ -77,11 +77,11 @@ const Footer = () => {
               
               <li>
                 <NavLink 
-                  to="/contact" 
+                  to="/inquiry" 
                   className="text-gray-600 hover:text-primary transition-colors"
                   activeClassName="text-primary font-medium"
                 >
-                  Contact Us
+                  Inquiry
                 </NavLink>
               </li>
             </ul>
