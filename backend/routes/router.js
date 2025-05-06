@@ -5,7 +5,8 @@ import {
     approvePayment, 
     declinePayment,
     deletePayment,
-    upload 
+    upload,
+    getPaymentById 
 } from '../controllers/payment-controller.js';
 import { createRefund, getRefunds, updateRefundStatus, deleteRefund, completeRefund } from '../controllers/refund-controller.js';
 
@@ -16,6 +17,9 @@ router.post('/payments/upload', upload.single('file'), uploadPayment);
 
 // Route to fetch all payment records
 router.get('/payments', getPayments);
+
+// Route to fetch a single payment by ID
+router.get('/payments/:id', getPaymentById);
 
 // Route to approve a payment
 router.put('/payments/approve/:id', approvePayment);

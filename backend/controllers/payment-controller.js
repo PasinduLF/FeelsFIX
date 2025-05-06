@@ -179,4 +179,21 @@ const deletePayment = async (req, res) => {
     }
 };
 
-export { uploadPayment, getPayments, approvePayment, declinePayment, deletePayment, upload };
+// Get a single payment by ID
+const getPaymentById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const payment = await Payment.findById(id);
+
+        if (!payment) {
+            return res.status(404).json({ error: "Payment not found" });
+        }
+
+        res.status(200).json(payment);
+    } catch (error) {
+        console.error("Fetch error:", error);
+        res.status(500).json({ error: "Failed to fetch payment" });
+    }
+};
+
+export { uploadPayment, getPayments, approvePayment, declinePayment, deletePayment, upload, getPaymentById };

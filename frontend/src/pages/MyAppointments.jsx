@@ -11,6 +11,7 @@ const MyAppointments = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [cancellingId, setCancellingId] = useState(null);
   const [filter, setFilter] = useState('all'); // 'all', 'upcoming', 'completed', 'cancelled'
+  const [refundRequest, setRefundRequest] = useState(false);
   const navigate = useNavigate();
 
   const months = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -244,8 +245,8 @@ const MyAppointments = () => {
                   )}
                   
                   {!item.cancelled && !item.isCompleted && (
-                    item.payment ? (
-                      <NavLink to="/refund-request" className="w-full">
+                    item.payment && !refundRequest ? (
+                      <NavLink to={`/refund-request/${item.paymentId}`} className="w-full">
                         <button 
                           className="w-full px-4 py-2 text-sm text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors flex items-center justify-center"
                         >
@@ -253,6 +254,14 @@ const MyAppointments = () => {
                           Cancel & Refund
                         </button>
                       </NavLink>
+                    ) : refundRequest ? (
+                      <button 
+                        onClick={() => setRefundRequest(false)}
+                        className="w-full px-4 py-2 text-sm text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors flex items-center justify-center"
+                      >
+                        <FaTimesCircle className="mr-2" />
+                        Cancel & Refund
+                      </button>
                     ) : (
                       <button 
                         onClick={() => cancelAppointment(item._id)}

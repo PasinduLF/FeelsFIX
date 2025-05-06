@@ -44,7 +44,7 @@ function App() {
         <Route path="/contact/edit/:id" element={<EditContact />} />
         <Route path="/contact/details/:id" element={<ShowContact />} />
         <Route path="/contact/delete/:id" element={<DeleteContact />} />
-        <Route path="/refund-request" element={<RefundPaymentRequest/>}/>
+        <Route path='/refund-request/:paymentId' element={<RefundPaymentRequest />} />
       </Routes>
       <Footer/>
     </div>

@@ -212,8 +212,8 @@ const ViewPayments = () => {
     };
 
     const filteredPayments = payments.filter(payment => {
-        const matchesSearch = payment.paymentId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            payment.name.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesSearch = (payment.paymentId?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                            (payment.name?.toLowerCase() || '').includes(searchTerm.toLowerCase());
         
         if (!matchesSearch) return false;
 
@@ -232,8 +232,8 @@ const ViewPayments = () => {
     });
 
     const filteredRefunds = refunds.filter(refund => {
-        const matchesSearch = refund.paymentId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            refund.name.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesSearch = (refund.paymentId?._id?.toString() || '').includes(searchTerm.toLowerCase()) ||
+                            (refund.name?.toLowerCase() || '').includes(searchTerm.toLowerCase());
         if (!matchesSearch) return false;
         return activeFilter === 'refund';
     });
@@ -386,7 +386,7 @@ const ViewPayments = () => {
                         filteredRefunds.map((refund, idx) => (
                             <div key={idx} className="payment-card">
                                 <div className="payment-info">
-                                    <h3>{refund.paymentId}</h3>
+                                    <h3>Payment ID: {refund.paymentId?.paymentId || 'N/A'}</h3>
                                     <p><strong>Name:</strong> {refund.name}</p>
                                     <p><strong>Bank Name:</strong> {refund.bankName}</p>
                                     <p><strong>Branch:</strong> {refund.branch}</p>

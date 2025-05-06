@@ -10,6 +10,7 @@ const paymentSchema = new mongoose.Schema({
     amount: { type: Number, required: true },
     status: { type: String, enum: ['Pending', 'Approved', 'Declined'], default: 'Pending' },
     fileUrl: { type: String, required: true },
+    refundId: { type: mongoose.Schema.Types.ObjectId, ref: 'Refund' },
     createdAt: { type: Date, default: Date.now },
 });
 
