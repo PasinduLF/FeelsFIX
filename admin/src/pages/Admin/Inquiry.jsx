@@ -34,7 +34,7 @@ const Inquiry = () => {
         {/* Header Section */}
         <div className="flex justify-between items-center mt-6 mb-10">
           <h1 className="text-4xl font-extrabold text-[#5F6FFF] bg-purple-50 px-6 py-3 rounded-full shadow-md">
-            FeelsFIX Contact Dashboard 
+            FeelsFIX Inquiry Dashboard 
           </h1>
 
           <div className="flex items-center gap-x-6">

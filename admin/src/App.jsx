@@ -36,7 +36,7 @@ const {dToken} = useContext(DoctorContext)
           <Route path='/all-appointments' element={<AllApointment/>} />
           <Route path='/add-doctor' element={<AddDoctor/>} />
           <Route path='/doctor-list' element={<DoctorsList/>} />
-          <Route path="/contact/inquiry" element={<Inquiry />} />
+          <Route path="/inquiry" element={<Inquiry />} />
           <Route path="/contact/details/:id" element={<ShowContact />} />
           <Route path="/contact/delete/:id" element={<DeleteContact />} />
           <Route path="/payments" element={<ViewPayments />} />
