@@ -11,6 +11,7 @@ const MyProfile = () => {
   const [image, setImage] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const [isDeleteRequestSent, setIsDeleteRequestSent] = useState(false);
 
   const validateForm = () => {
     const newErrors = {};
@@ -101,6 +102,33 @@ const MyProfile = () => {
     setImage(null);
     setErrors({});
     loadUserProfileData(); // Reset to original data
+  };
+
+  const handleDeleteAccountRequest = async () => {
+    if (window.confirm('Are you sure you want to request account deletion? This action cannot be undone.')) {
+      try {
+        setIsLoading(true);
+        const { data } = await axios.post(
+          `${backendUrl}/api/user/request-delete-account`,
+          {},
+          {
+            headers: { token }
+          }
+        );
+
+        if (data.success) {
+          toast.success('Delete account request sent successfully');
+          setIsDeleteRequestSent(true);
+        } else {
+          toast.error(data.message);
+        }
+      } catch (error) {
+        console.error('Delete account request error:', error);
+        toast.error(error.response?.data?.message || 'Failed to send delete request. Please try again.');
+      } finally {
+        setIsLoading(false);
+      }
+    }
   };
 
   if (!userData) {
@@ -280,12 +308,21 @@ const MyProfile = () => {
             </button>
           </>
         ) : (
-          <button
-            className="px-6 py-2 bg-primary text-white rounded-full hover:bg-primary-dark transition-colors"
-            onClick={() => setIsEdit(true)}
-          >
-            Edit Profile
-          </button>
+          <div className="flex gap-4">
+            <button
+              className="px-6 py-2 bg-primary text-white rounded-full hover:bg-primary-dark transition-colors"
+              onClick={() => setIsEdit(true)}
+            >
+              Edit Profile
+            </button>
+            <button
+              className="px-6 py-2 bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors disabled:opacity-70"
+              onClick={handleDeleteAccountRequest}
+              disabled={isLoading || isDeleteRequestSent}
+            >
+              {isDeleteRequestSent ? 'Delete Request Sent' : 'Delete My Account'}
+            </button>
+          </div>
         )}
       </div>
     </div>

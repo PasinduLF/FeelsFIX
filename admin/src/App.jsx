@@ -17,6 +17,7 @@ import Inquiry from './pages/Admin/Inquiry';
 import ShowContact from '../../frontend/src/pages/ShowContact';
 import DeleteContact from '../../frontend/src/pages/DeleteContact';
 import ViewPayments from './pages/Admin/ViewPayments';
+import UserManagement from './pages/Admin/UserManagement';
 
 const App = () => {
 
@@ -40,6 +41,7 @@ const {dToken} = useContext(DoctorContext)
           <Route path="/contact/details/:id" element={<ShowContact />} />
           <Route path="/contact/delete/:id" element={<DeleteContact />} />
           <Route path="/payments" element={<ViewPayments />} />
+          <Route path="/user-management" element={<UserManagement />} />
 
           {/* doctor route */}
           <Route path='/doctor-dashboard' element={<DoctorDashboard/>} />

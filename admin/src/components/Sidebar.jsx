@@ -35,6 +35,10 @@ const Sidebar = () => {
                     <img src={assets.people_icon} alt="" />
                     <p className='hidden md:block'>Inquiry</p>
                 </NavLink>
+                <NavLink className={({isActive})=>`flex items-center gap-3 py-3.5 px-3 md:min-w-72 cursor-pointer ${isActive ? 'bg-[#F2F3FF] border-r-4 border-primary' : ''}`} to={'/user-management'}>
+                    <img src={assets.people_icon} alt="" />
+                    <p className='hidden md:block'>User Management</p>
+                </NavLink>
             </ul>
         }
 

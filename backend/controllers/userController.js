@@ -333,4 +333,88 @@ const verifyResetCode = async(req, res) => {
     }
 };
 
-export {registerUser,loginUser,getProfile,updateProfile,bookAppointment,listAppointment,cancelAppointment,forgotPassword,resetPassword,verifyResetCode}
+//API to get all users
+const getAllUsers = async (req, res) => {
+    try {
+        const users = await userModel.find().select('-password -resetPasswordCode -resetPasswordExpires');
+        res.json({ success: true, data: users });
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+};
+
+//API to delete user
+const deleteUser = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        await userModel.findByIdAndDelete(userId);
+        res.json({ success: true, message: "User deleted successfully" });
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+};
+
+//API to request account deletion
+const requestDeleteAccount = async (req, res) => {
+    try {
+        const { userId } = req.body;
+        
+        // Update user's deleteRequested status
+        await userModel.findByIdAndUpdate(userId, { deleteRequested: true });
+        
+        res.json({ success: true, message: "Delete account request sent successfully" });
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+};
+
+//API to delete appointment (admin only)
+const deleteAppointment = async (req, res) => {
+    try {
+        const { appointmentId } = req.params;
+        const appointment = await appointmentModel.findById(appointmentId);
+        
+        if (!appointment) {
+            return res.json({ success: false, message: "Appointment not found" });
+        }
+
+        if (!appointment.cancelled) {
+            return res.json({ success: false, message: "Only cancelled appointments can be deleted" });
+        }
+
+        // Release the doctor's slot
+        const { docId, slotDate, slotTime } = appointment;
+        const doctorData = await doctorModel.findById(docId);
+        if (doctorData && doctorData.slots_booked && doctorData.slots_booked[slotDate]) {
+            doctorData.slots_booked[slotDate] = doctorData.slots_booked[slotDate].filter(e => e !== slotTime);
+            await doctorModel.findByIdAndUpdate(docId, { slots_booked: doctorData.slots_booked });
+        }
+
+        // Delete the appointment
+        await appointmentModel.findByIdAndDelete(appointmentId);
+        res.json({ success: true, message: "Appointment deleted successfully" });
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: error.message });
+    }
+};
+
+export {
+    registerUser,
+    loginUser,
+    getProfile,
+    updateProfile,
+    bookAppointment,
+    listAppointment,
+    cancelAppointment,
+    forgotPassword,
+    resetPassword,
+    verifyResetCode,
+    getAllUsers,
+    deleteUser,
+    requestDeleteAccount,
+    deleteAppointment
+}

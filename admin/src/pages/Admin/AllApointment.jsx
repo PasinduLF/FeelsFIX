@@ -4,7 +4,8 @@ import { AppContext } from '../../context/AppContext'
 import { assets } from '../../assets/assets'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { FaFilePdf } from 'react-icons/fa'
+import { FaFilePdf, FaTrash } from 'react-icons/fa'
+import axios from 'axios'
 
 const AllAppointments = () => {
   const { aToken, appointments, getAllAppointments, cancelAppointment } = useContext(AdminContext)
@@ -25,6 +26,19 @@ const AllAppointments = () => {
     if (filter === 'cancelled') return item.cancelled
     return true
   })
+
+  const handleDeleteAppointment = async (appointmentId) => {
+    if (window.confirm('Are you sure you want to delete this cancelled appointment?')) {
+      try {
+        const response = await axios.delete(`http://localhost:4000/api/user/appointments/${appointmentId}`);
+        if (response.data.success) {
+          getAllAppointments(); // Refresh the appointments list
+        }
+      } catch (error) {
+        console.error('Error deleting appointment:', error);
+      }
+    }
+  };
 
   const generatePDF = () => {
     const doc = new jsPDF()
@@ -262,18 +276,29 @@ const AllAppointments = () => {
                 <p>{item.docData?.name}</p>
               </div>
               <p>{currency}{item.amount}</p>
-              {(
-                item.cancelled
-                  ? <p className='text-red-400 text-xs font-medium'>Cancelled</p>
-                  : item.isCompleted
-                  ? <p className='text-green-500 text-xs font-medium'>Completed</p>
-                  : <img
-                      onClick={() => cancelAppointment(item._id)}
-                      className='w-10 cursor-pointer'
-                      src={assets.cancel_icon}
-                      alt="Cancel appointment"
-                    />
-              )}
+              <div className="flex items-center gap-2">
+                {item.cancelled ? (
+                  <>
+                    <p className='text-red-400 text-xs font-medium'>Cancelled</p>
+                    <button
+                      onClick={() => handleDeleteAppointment(item._id)}
+                      className="text-red-600 hover:text-red-900"
+                      title="Delete appointment"
+                    >
+                      <FaTrash className="w-4 h-4" />
+                    </button>
+                  </>
+                ) : item.isCompleted ? (
+                  <p className='text-green-500 text-xs font-medium'>Completed</p>
+                ) : (
+                  <img
+                    onClick={() => cancelAppointment(item._id)}
+                    className='w-10 cursor-pointer'
+                    src={assets.cancel_icon}
+                    alt="Cancel appointment"
+                  />
+                )}
+              </div>
             </div>
           ))
         )}
