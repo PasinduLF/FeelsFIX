@@ -172,4 +172,81 @@ res.json({success:true,dashData})
   }
 }
 
-export { addDoctor, loginAdmin, allDoctors, appointmentsAdmin,appointmentCancel,adminDashboard };
+//API to delete doctor
+const deleteDoctor = async (req, res) => {
+  try {
+    const { doctorId } = req.params;
+    
+    // Check if doctor has any active appointments
+    const activeAppointments = await appointmentModel.find({
+      docId: doctorId,
+      cancelled: false,
+      isCompleted: false
+    });
+
+    if (activeAppointments.length > 0) {
+      return res.json({ 
+        success: false, 
+        message: "Cannot delete doctor with active appointments. Please cancel all appointments first." 
+      });
+    }
+
+    // Delete the doctor
+    await doctorModel.findByIdAndDelete(doctorId);
+    res.json({ success: true, message: "Doctor deleted successfully" });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: error.message });
+  }
+};
+
+//API to update doctor
+const updateDoctor = async (req, res) => {
+  try {
+    const { doctorId } = req.params;
+    const {
+      name,
+      speciality,
+      degree,
+      experience,
+      about,
+      fees,
+      address,
+    } = req.body;
+    const imageFile = req.file;
+
+    // Check if doctor exists
+    const doctor = await doctorModel.findById(doctorId);
+    if (!doctor) {
+      return res.json({ success: false, message: "Doctor not found" });
+    }
+
+    // Prepare update data
+    const updateData = {
+      name,
+      speciality,
+      degree,
+      experience,
+      about,
+      fees,
+      address: JSON.parse(address),
+    };
+
+    // If new image is provided, upload it
+    if (imageFile) {
+      const imageUpload = await cloudinary.uploader.upload(imageFile.path, {
+        resource_type: "image",
+      });
+      updateData.image = imageUpload.secure_url;
+    }
+
+    // Update doctor
+    await doctorModel.findByIdAndUpdate(doctorId, updateData);
+    res.json({ success: true, message: "Doctor updated successfully" });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: error.message });
+  }
+};
+
+export { addDoctor, loginAdmin, allDoctors, appointmentsAdmin, appointmentCancel, adminDashboard, deleteDoctor, updateDoctor };
