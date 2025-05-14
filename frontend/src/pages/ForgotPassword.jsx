@@ -93,7 +93,17 @@ const ForgotPassword = () => {
           toast.error(data.message)
         }
       } else if (step === 2) {
-        setStep(3)
+        const { data } = await axios.post(backendUrl + '/api/user/verify-reset-code', {
+          email: formData.email,
+          code: formData.code
+        })
+        
+        if (data.success) {
+          toast.success(data.message)
+          setStep(3)
+        } else {
+          toast.error(data.message)
+        }
       } else if (step === 3) {
         const { data } = await axios.post(backendUrl + '/api/user/reset-password', {
           email: formData.email,
