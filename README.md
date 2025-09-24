@@ -138,6 +138,20 @@ graph LR
 
 ---
 
+## 📚 Project Documentation
+
+<div align="center">
+
+[![Google Drive](https://img.shields.io/badge/Google%20Drive-Project%20Documents-4285F4?style=for-the-badge&logo=googledrive&logoColor=white)](https://drive.google.com/drive/folders/1bDv1WcreUfF5W4lyLi_8mdu3pfFeH3ES?usp=sharing)
+
+**Complete project documentation, reports, website screenshots, and related materials are available in our Google Drive folder.**
+
+*Includes detailed project specifications, design documents, implementation guides, UI/UX screenshots, and academic deliverables.*
+
+</div>
+
+---
+
 ## 📞 Support & Contact
 
 <div align="center">
