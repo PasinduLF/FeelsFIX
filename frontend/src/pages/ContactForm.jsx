@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useContext, useMemo, useState } from "react";
 import BackButton from "../components/BackButton";
 import Spinner from "../components/Spinner";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { useSnackbar } from "notistack";
+import { AppContext } from "../context/AppContext";
 
 const ContactForm = () => {
   const [name, setName] = useState("");
@@ -16,6 +17,8 @@ const ContactForm = () => {
 
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
+  const { backendUrl } = useContext(AppContext);
+  const apiBase = useMemo(() => backendUrl ? backendUrl.replace(/\/$/, '') : '', [backendUrl]);
 
   const handleSendMessage = () => {
     // Validation
@@ -61,8 +64,15 @@ const ContactForm = () => {
     if (photo) data.append("photo", photo);
 
     setLoading(true);
+    if (!apiBase) {
+      enqueueSnackbar("Backend is not configured. Please try again later.", {
+        variant: "error",
+      });
+      setLoading(false);
+      return;
+    }
     axios
-      .post("http://localhost:4000/contact", data)
+      .post(`${apiBase}/contact`, data)
       .then(() => {
         setLoading(false);
         enqueueSnackbar("Message Sent Successfully! 🌟", {

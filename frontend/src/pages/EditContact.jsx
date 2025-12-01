@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import BackButton from "../components/BackButton";
 import Spinner from "../components/Spinner";
 import axios from "axios";
 import { useNavigate, useParams } from "react-router-dom";
 import { useSnackbar } from "notistack";
+import { AppContext } from "../context/AppContext";
 
 const EditContact = () => {
   const [name, setName] = useState("");
@@ -16,28 +17,36 @@ const EditContact = () => {
   const navigate = useNavigate();
   const { id } = useParams();
   const { enqueueSnackbar } = useSnackbar();
+  const { backendUrl } = useContext(AppContext);
+  const apiBase = useMemo(() => backendUrl ? backendUrl.replace(/\/$/, '') : '', [backendUrl]);
 
   useEffect(() => {
-    setLoading(true);
-    axios
-      .get(`http://localhost:4000/contact/${id}`) // Updated endpoint
-      .then((response) => {
-        setName(response.data.name);
-        setEmail(response.data.email);
-        setPhone(response.data.phone);
-        setMessage(response.data.message);
-        setCategory(response.data.category);
-        setPhoto(response.data.photo); // Store existing photo reference
-        setLoading(false);
-      })
-      .catch((error) => {
-        setLoading(false);
+    const fetchContact = async () => {
+      if (!apiBase) {
+        enqueueSnackbar("Backend is not configured. Please try again later.", { variant: "error" });
+        return
+      }
+      setLoading(true)
+      try {
+        const response = await axios.get(`${apiBase}/contact/${id}`)
+        setName(response.data.name)
+        setEmail(response.data.email)
+        setPhone(response.data.phone)
+        setMessage(response.data.message)
+        setCategory(response.data.category)
+        setPhoto(response.data.photo)
+      } catch (error) {
         enqueueSnackbar("An error occurred while fetching contact data 😔", {
           variant: "error",
-        });
-        console.log(error);
-      });
-  }, [id, enqueueSnackbar]);
+        })
+        console.log(error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchContact()
+  }, [apiBase, enqueueSnackbar, id])
 
   const handleEditContact = () => {
     // Validation
@@ -81,8 +90,13 @@ const EditContact = () => {
     if (photo && typeof photo !== "string") data.append("photo", photo); // Only append if new file
 
     setLoading(true);
+    if (!apiBase) {
+      enqueueSnackbar("Backend is not configured. Please try again later.", { variant: "error" });
+      setLoading(false);
+      return;
+    }
     axios
-      .put(`http://localhost:4000/contact/${id}`, data)
+      .put(`${apiBase}/contact/${id}`, data)
       .then(() => {
         setLoading(false);
         enqueueSnackbar("Contact Message Updated Successfully! 🌟", {

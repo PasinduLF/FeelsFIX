@@ -7,9 +7,11 @@ export const AdminContext = createContext();
 const AdminContextProvider = (props) => {
   const [aToken, setAToken] = useState(
     localStorage.getItem("aToken") ? localStorage.getItem("aToken") : '');
-    const [doctors,setDoctors] = useState([])
-    const [appointments,setAppointmnets] = useState([])
-    const [dashData,setDashData] = useState(false)
+  const [doctors,setDoctors] = useState([])
+  const [appointments,setAppointmnets] = useState([])
+  const [dashData,setDashData] = useState(false)
+  const [workshopRegistrations, setWorkshopRegistrations] = useState([])
+  const [workshopRegistrationLoading, setWorkshopRegistrationLoading] = useState(false)
   
   const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
@@ -82,6 +84,49 @@ const AdminContextProvider = (props) => {
     }
   }
 
+  const fetchWorkshopRegistrations = async () => {
+    if (!backendUrl || !aToken) return
+    setWorkshopRegistrationLoading(true)
+    try {
+      const { data } = await axios.get(`${backendUrl}/api/workshops/registrations`, { headers: { atoken: aToken } })
+      if (data.success) {
+        setWorkshopRegistrations(data.data || [])
+      } else {
+        toast.error(data.message || 'Unable to load registrations')
+      }
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error.message)
+    } finally {
+      setWorkshopRegistrationLoading(false)
+    }
+  }
+
+  const updateWorkshopRegistrationDecision = async (registrationId, decisionStatus, decisionNote = '') => {
+    if (!backendUrl || !aToken) return false
+    try {
+      const { data } = await axios.patch(
+        `${backendUrl}/api/workshops/registrations/${registrationId}/decision`,
+        { decisionStatus, decisionNote },
+        { headers: { atoken: aToken } }
+      )
+      if (data.success) {
+        toast.success(data.message || 'Registration updated')
+        setWorkshopRegistrations((prev) =>
+          prev.map((registration) =>
+            registration.id === registrationId
+              ? { ...registration, decisionStatus, decisionNote }
+              : registration
+          )
+        )
+        return true
+      }
+      toast.error(data.message || 'Unable to update registration')
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error.message)
+    }
+    return false
+  }
+
   const value = {
     aToken,
     setAToken,
@@ -90,7 +135,11 @@ const AdminContextProvider = (props) => {
     appointments,setAppointmnets,
     getAllAppointments,
     cancelAppointment,
-    dashData,getDashData
+    dashData,getDashData,
+    workshopRegistrations,
+    workshopRegistrationLoading,
+    fetchWorkshopRegistrations,
+    updateWorkshopRegistrationDecision,
   };
 
   return (

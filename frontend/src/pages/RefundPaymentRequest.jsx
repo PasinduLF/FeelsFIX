@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { useParams, useNavigate } from 'react-router-dom';
+import { AppContext } from '../context/AppContext';
 
 const RefundPaymentRequest = () => {
   const { paymentId } = useParams();
@@ -17,11 +18,18 @@ const RefundPaymentRequest = () => {
   const [error, setError] = useState('');
   const [notifications, setNotifications] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const { backendUrl } = useContext(AppContext);
+  const apiBase = useMemo(() => backendUrl ? backendUrl.replace(/\/$/, '') : '', [backendUrl]);
 
   useEffect(() => {
     const fetchPaymentDetails = async () => {
       try {
-        const response = await axios.get(`http://localhost:4000/api/payments/${paymentId}`);
+        if (!apiBase) {
+          setError('Backend URL is not configured. Please contact support.');
+          setIsLoading(false);
+          return;
+        }
+        const response = await axios.get(`${apiBase}/api/payments/${paymentId}`);
         if (response.data) {
           setPayment(response.data);
           setForm(prev => ({
@@ -45,12 +53,15 @@ const RefundPaymentRequest = () => {
       setError('Payment ID is required');
       setIsLoading(false);
     }
-  }, [paymentId]);
+  }, [apiBase, paymentId]);
 
   // Function to check for refund status updates
-  const checkRefundStatus = async () => {
+  const checkRefundStatus = useCallback(async () => {
     try {
-      const response = await axios.get('http://localhost:4000/api/refunds');
+      if (!apiBase) {
+        return;
+      }
+      const response = await axios.get(`${apiBase}/api/refunds`);
       const userRefunds = response.data.filter(
         refund => refund.paymentId === paymentId && 
         refund.notification && 
@@ -68,13 +79,13 @@ const RefundPaymentRequest = () => {
     } catch (error) {
       console.error('Error checking refund status:', error);
     }
-  };
+  }, [apiBase, paymentId]);
 
   // Check for updates every 30 seconds
   useEffect(() => {
     const interval = setInterval(checkRefundStatus, 30000);
     return () => clearInterval(interval);
-  }, [paymentId]);
+  }, [checkRefundStatus]);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -86,7 +97,11 @@ const RefundPaymentRequest = () => {
     setError('');
     
     try {
-      const response = await axios.post('http://localhost:4000/api/refund', {
+      if (!apiBase) {
+        setError('Backend URL is not configured. Please contact support.');
+        return;
+      }
+      const response = await axios.post(`${apiBase}/api/refund`, {
         ...form,
         paymentId
       });
