@@ -1,27 +1,38 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useParams } from "react-router-dom";
 import BackButton from "../components/BackButton";
 import Spinner from "../components/Spinner";
+import { toast } from 'react-toastify'
+import { AppContext } from '../context/AppContext'
 
 const ShowContact = () => {
   const [contact, setContact] = useState({});
   const [loading, setLoading] = useState(false);
   const { id } = useParams();
+  const { backendUrl } = useContext(AppContext)
+  const apiBase = useMemo(() => backendUrl ? backendUrl.replace(/\/$/, '') : '', [backendUrl])
 
   useEffect(() => {
-    setLoading(true);
-    axios
-      .get(`http://localhost:4000/contact/${id}`) // Updated endpoint
-      .then((response) => {
-        setContact(response.data);
-        setLoading(false);
-      })
-      .catch((error) => {
-        console.log(error);
-        setLoading(false);
-      });
-  }, [id]);
+    const fetchContact = async () => {
+      if (!apiBase) {
+        toast.error('Backend unavailable. Please configure VITE_BACKEND_URL.')
+        return
+      }
+      setLoading(true)
+      try {
+        const response = await axios.get(`${apiBase}/contact/${id}`)
+        setContact(response.data)
+      } catch (error) {
+        console.log(error)
+        toast.error('Unable to load contact details. Please try again later.')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchContact()
+  }, [apiBase, id])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-100 to-white p-6">

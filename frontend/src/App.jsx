@@ -11,7 +11,7 @@ import Navbar from './components/Navbar'
 import Footer from './components/Footer'
 import Workshop from './pages/Workshops'
 import Blogs from './pages/Blogs'
-import { ToastContainer, toast } from 'react-toastify';
+import { ToastContainer } from 'react-toastify';
 import Payment from './pages/Payment'
 import Inquiry from './pages/Inquiry'
 import ContactForm from './pages/ContactForm'
@@ -23,6 +23,8 @@ import RefundPaymentRequest from './pages/RefundPaymentRequest'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsOfService from './pages/TermsOfService'
 import CookiePolicy from './pages/CookiePolicy'
+import MyWorkshops from './pages/MyWorkshops'
+import WorkshopRegistration from './pages/WorkshopRegistration'
 
 function App() {
   return (
@@ -39,8 +41,10 @@ function App() {
         <Route path='/inquiry' element={<Inquiry/>}/>
         <Route path='/my-profile' element={<MyProfile/>}/>
         <Route path='/my-appointments' element={<MyAppointments/>}/>
+  <Route path='/my-workshops' element={<MyWorkshops />}/>
         <Route path='/appointment/:docId' element={<Appointment/>}/>
         <Route path='/workshops' element={<Workshop/>}/>
+  <Route path='/workshops/:workshopId/register' element={<WorkshopRegistration />}/>
         <Route path='/blogs' element={<Blogs/>}/>
         <Route path='/payment/:appointmentId' element={<Payment/>}/>
         <Route path="/contact/create" element={<ContactForm />} />

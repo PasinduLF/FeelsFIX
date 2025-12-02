@@ -8,6 +8,7 @@ import doctorRouter from './routes/doctorRoute.js'
 import userRouter from './routes/userRoute.js'
 import contactRouter from './routes/contact.js'
 import paymentRoutes from './routes/router.js'
+import workshopRoutes from './routes/workshopRoute.js'
 
 //app config
 const app = express()
@@ -28,6 +29,7 @@ app.use('/api/doctor',doctorRouter)
 app.use('/api/user',userRouter)
 app.use("/contact", contactRouter);
 app.use('/api', paymentRoutes);
+app.use('/api/workshops', workshopRoutes);
 
 
 // Error handler for malformed JSON

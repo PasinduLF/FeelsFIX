@@ -1,6 +1,4 @@
-import React from 'react'
-/* eslint-disable react/no-unescaped-entities */
-import { useEffect, useState } from "react";
+import React, { useContext, useEffect, useMemo, useState } from 'react'
 import axios from "axios";
 import Spinner from "../components/Spinner";
 import { Link } from "react-router-dom";
@@ -9,12 +7,16 @@ import { AiOutlineEdit } from "react-icons/ai";
 import { BsInfoCircle } from "react-icons/bs";
 import { MdOutlineDelete } from "react-icons/md";
 import { FaHeart, FaWhatsapp, FaInstagram, FaFacebookF } from "react-icons/fa";
+import { toast } from 'react-toastify'
+import { AppContext } from '../context/AppContext'
 
 const Inquiry = () => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
   const keys = ["name", "message"];
+  const { backendUrl } = useContext(AppContext)
+  const apiBase = useMemo(() => backendUrl ? backendUrl.replace(/\/$/, '') : '', [backendUrl])
 
   const search = (data) => {
     return data.filter((item) =>
@@ -23,18 +25,25 @@ const Inquiry = () => {
   };
 
   useEffect(() => {
-    setLoading(true);
-    axios
-      .get("http://localhost:4000/contact")
-      .then((response) => {
-        setContacts(response.data.data);
-        setLoading(false);
-      })
-      .catch((error) => {
-        console.log(error);
-        setLoading(false);
-      });
-  }, []);
+    const fetchContacts = async () => {
+      if (!apiBase) {
+        toast.error('Backend unavailable. Please configure VITE_BACKEND_URL for production builds.')
+        return
+      }
+      setLoading(true)
+      try {
+        const { data } = await axios.get(`${apiBase}/contact`)
+        setContacts(data.data)
+      } catch (error) {
+        console.log(error)
+        toast.error('Unable to load inquiries. Please try again later.')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchContacts()
+  }, [apiBase])
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-purple-100 to-white flex flex-col">

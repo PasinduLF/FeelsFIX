@@ -1,20 +1,28 @@
-import { useState } from "react";
+import { useContext, useMemo, useState } from "react";
 import BackButton from "../components/BackButton";
 import Spinner from "../components/Spinner";
 import axios from "axios";
 import { useNavigate, useParams } from "react-router-dom";
 import { useSnackbar } from "notistack";
+import { AppContext } from "../context/AppContext";
 
 const DeleteContact = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { id } = useParams();
   const { enqueueSnackbar } = useSnackbar();
+  const { backendUrl } = useContext(AppContext);
+  const apiBase = useMemo(() => backendUrl ? backendUrl.replace(/\/$/, '') : '', [backendUrl]);
 
   const handleDeleteContact = () => {
     setLoading(true);
+    if (!apiBase) {
+      enqueueSnackbar("Backend is not configured. Please try again later.", { variant: "error" });
+      setLoading(false);
+      return;
+    }
     axios
-      .delete(`http://localhost:4000/contact/${id}`) // Updated endpoint
+      .delete(`${apiBase}/contact/${id}`)
       .then(() => {
         setLoading(false);
         enqueueSnackbar("Contact Message Deleted Successfully! 🗑️", {

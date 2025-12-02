@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { useNavigate, useParams } from 'react-router-dom';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { AppContext } from '../context/AppContext';
 
 const Payment = () => {
     const { appointmentId } = useParams();
@@ -19,6 +20,8 @@ const Payment = () => {
     const [showReceipt, setShowReceipt] = useState(false);
     const [paymentData, setPaymentData] = useState(null);
     const navigate = useNavigate();
+    const { backendUrl } = useContext(AppContext);
+    const apiBase = useMemo(() => backendUrl ? backendUrl.replace(/\/$/, '') : '', [backendUrl]);
 
     // Updated bank details with different account numbers
     const bankDetails = {
@@ -165,7 +168,12 @@ const Payment = () => {
         formData.append('file', file);
 
         try {
-            const response = await axios.post('http://localhost:4000/api/payments/upload', formData, {
+            if (!apiBase) {
+                setError('Backend is not configured. Please try again later.');
+                setIsSubmitting(false);
+                return;
+            }
+            const response = await axios.post(`${apiBase}/api/payments/upload`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
 

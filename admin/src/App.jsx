@@ -18,6 +18,9 @@ import ShowContact from '../../frontend/src/pages/ShowContact';
 import DeleteContact from '../../frontend/src/pages/DeleteContact';
 import ViewPayments from './pages/Admin/ViewPayments';
 import UserManagement from './pages/Admin/UserManagement';
+import AddWorkshop from './pages/Admin/AddWorkshop';
+import WorkshopBars from './pages/Admin/WorkshopBars';
+import WorkshopRegistrations from './pages/Admin/WorkshopRegistrations';
 
 const App = () => {
 
@@ -36,7 +39,10 @@ const {dToken} = useContext(DoctorContext)
           <Route path='/admin-dashboard' element={<Dashboard/>} />
           <Route path='/all-appointments' element={<AllApointment/>} />
           <Route path='/add-doctor' element={<AddDoctor/>} />
+          <Route path='/add-workshop' element={<AddWorkshop/>} />
           <Route path='/doctor-list' element={<DoctorsList/>} />
+          <Route path='/workshop-bars' element={<WorkshopBars/>} />
+          <Route path='/workshop-registrations' element={<WorkshopRegistrations />} />
           <Route path="/inquiry" element={<Inquiry />} />
           <Route path="/contact/details/:id" element={<ShowContact />} />
           <Route path="/contact/delete/:id" element={<DeleteContact />} />
