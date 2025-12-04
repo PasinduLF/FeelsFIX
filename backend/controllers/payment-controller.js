@@ -2,6 +2,7 @@ import fs from 'fs';
 import multer from 'multer';
 import Payment from '../models/PaymentSchema.js';
 import appointmentModel from '../models/appointmentModel.js';
+import WorkshopRegistrationModel from '../models/workshopRegistrationModel.js';
 
 // Configure uploads directory
 const uploadDir = 'uploadPayment/';
@@ -28,6 +29,30 @@ const upload = multer({
         }
     }
 });
+
+const DASHBOARD_STRIPE_CURRENCY = (process.env.STRIPE_CURRENCY || 'LKR').toUpperCase();
+
+const roundCurrency = (value = 0) => Math.round(value * 100) / 100;
+
+const convertStripeAmount = (value = 0) => roundCurrency((value || 0) / 100);
+
+const buildMonthBuckets = (count = 6) => {
+    const months = [];
+    const today = new Date();
+    today.setDate(1);
+    today.setHours(0, 0, 0, 0);
+
+    for (let i = count - 1; i >= 0; i -= 1) {
+        const current = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        months.push({
+            key: `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`,
+            label: current.toLocaleString('en-US', { month: 'short' }),
+            start: new Date(current.getFullYear(), current.getMonth(), 1),
+        });
+    }
+
+    return months;
+};
 
 // Upload Payment Slip
 const uploadPayment = async (req, res) => {
@@ -196,4 +221,203 @@ const getPaymentById = async (req, res) => {
     }
 };
 
-export { uploadPayment, getPayments, approvePayment, declinePayment, deletePayment, upload, getPaymentById };
+const getFinanceDashboardMetrics = async (req, res) => {
+    try {
+        const monthBuckets = buildMonthBuckets(6);
+        const rangeStart = new Date(monthBuckets[0].start);
+
+        const stripeRevenuePromise = WorkshopRegistrationModel.aggregate([
+            { $match: { paymentStatus: 'succeeded' } },
+            {
+                $group: {
+                    _id: null,
+                    totalAmount: { $sum: '$paymentAmount' },
+                    count: { $sum: 1 },
+                },
+            },
+        ]);
+
+        const stripeStatusPromise = WorkshopRegistrationModel.aggregate([
+            { $match: { paymentAmount: { $gt: 0 } } },
+            {
+                $group: {
+                    _id: '$paymentStatus',
+                    count: { $sum: 1 },
+                    amount: { $sum: '$paymentAmount' },
+                },
+            },
+        ]);
+
+        const stripeMonthlyPromise = WorkshopRegistrationModel.aggregate([
+            { $match: { paymentStatus: 'succeeded', createdAt: { $gte: rangeStart } } },
+            {
+                $group: {
+                    _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } },
+                    amount: { $sum: '$paymentAmount' },
+                },
+            },
+            { $sort: { '_id.year': 1, '_id.month': 1 } },
+        ]);
+
+        const recentStripePromise = WorkshopRegistrationModel.find({ paymentAmount: { $gt: 0 } })
+            .sort({ createdAt: -1 })
+            .limit(5)
+            .select('participantName paymentAmount paymentStatus paymentCurrency paymentMethodType createdAt workshopTitle');
+
+        const bankRevenuePromise = Payment.aggregate([
+            { $match: { status: 'Approved' } },
+            {
+                $group: {
+                    _id: null,
+                    totalAmount: { $sum: '$amount' },
+                    count: { $sum: 1 },
+                },
+            },
+        ]);
+
+        const bankStatusPromise = Payment.aggregate([
+            {
+                $group: {
+                    _id: '$status',
+                    count: { $sum: 1 },
+                    amount: { $sum: '$amount' },
+                },
+            },
+        ]);
+
+        const bankMonthlyPromise = Payment.aggregate([
+            { $match: { status: 'Approved', createdAt: { $gte: rangeStart } } },
+            {
+                $group: {
+                    _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } },
+                    amount: { $sum: '$amount' },
+                },
+            },
+            { $sort: { '_id.year': 1, '_id.month': 1 } },
+        ]);
+
+        const recentBankPromise = Payment.find()
+            .sort({ createdAt: -1 })
+            .limit(5)
+            .select('name amount status bank createdAt paymentId');
+
+        const [
+            stripeRevenueAgg,
+            stripeStatusAgg,
+            stripeMonthlyAgg,
+            recentStripe,
+            bankRevenueAgg,
+            bankStatusAgg,
+            bankMonthlyAgg,
+            recentBank,
+        ] = await Promise.all([
+            stripeRevenuePromise,
+            stripeStatusPromise,
+            stripeMonthlyPromise,
+            recentStripePromise,
+            bankRevenuePromise,
+            bankStatusPromise,
+            bankMonthlyPromise,
+            recentBankPromise,
+        ]);
+
+        const stripeRevenueData = stripeRevenueAgg[0] || { totalAmount: 0, count: 0 };
+        const bankRevenueData = bankRevenueAgg[0] || { totalAmount: 0, count: 0 };
+
+        const stripeStatuses = stripeStatusAgg.reduce((acc, entry) => {
+            const key = entry._id || 'unknown';
+            acc[key] = {
+                count: entry.count,
+                amount: convertStripeAmount(entry.amount),
+            };
+            return acc;
+        }, {});
+
+        const bankStatuses = bankStatusAgg.reduce((acc, entry) => {
+            const key = entry._id || 'Unknown';
+            acc[key] = {
+                count: entry.count,
+                amount: roundCurrency(entry.amount || 0),
+            };
+            return acc;
+        }, {});
+
+        const stripeMonthlyMap = stripeMonthlyAgg.reduce((acc, entry) => {
+            const key = `${entry._id.year}-${String(entry._id.month).padStart(2, '0')}`;
+            acc[key] = convertStripeAmount(entry.amount || 0);
+            return acc;
+        }, {});
+
+        const bankMonthlyMap = bankMonthlyAgg.reduce((acc, entry) => {
+            const key = `${entry._id.year}-${String(entry._id.month).padStart(2, '0')}`;
+            acc[key] = roundCurrency(entry.amount || 0);
+            return acc;
+        }, {});
+
+        const monthlySeries = {
+            labels: monthBuckets.map((bucket) => bucket.label),
+            stripe: monthBuckets.map((bucket) => stripeMonthlyMap[bucket.key] || 0),
+            bank: monthBuckets.map((bucket) => bankMonthlyMap[bucket.key] || 0),
+            currency: 'LKR',
+        };
+
+        const stripeTotal = convertStripeAmount(stripeRevenueData.totalAmount || 0);
+        const bankTotal = roundCurrency(bankRevenueData.totalAmount || 0);
+
+        const responsePayload = {
+            totals: {
+                combined: {
+                    amount: roundCurrency(stripeTotal + bankTotal),
+                    count: (stripeRevenueData.count || 0) + (bankRevenueData.count || 0),
+                    currency: 'LKR',
+                },
+                stripe: {
+                    amount: stripeTotal,
+                    count: stripeRevenueData.count || 0,
+                    currency: DASHBOARD_STRIPE_CURRENCY,
+                },
+                bank: {
+                    amount: bankTotal,
+                    count: bankRevenueData.count || 0,
+                    currency: 'LKR',
+                },
+            },
+            statusBreakdown: {
+                stripe: stripeStatuses,
+                bank: bankStatuses,
+            },
+            monthlySeries,
+            recentActivity: {
+                stripe: recentStripe.map((entry) => ({
+                    id: entry._id,
+                    name: entry.participantName,
+                    reference: entry.workshopTitle,
+                    amount: convertStripeAmount(entry.paymentAmount || 0),
+                    status: entry.paymentStatus,
+                    method: entry.paymentMethodType || 'card',
+                    currency: (entry.paymentCurrency || DASHBOARD_STRIPE_CURRENCY).toUpperCase(),
+                    createdAt: entry.createdAt,
+                })),
+                bank: recentBank.map((entry) => ({
+                    id: entry._id,
+                    name: entry.name,
+                    reference: entry.bank,
+                    amount: roundCurrency(entry.amount || 0),
+                    status: entry.status,
+                    method: 'bank-transfer',
+                    currency: 'LKR',
+                    createdAt: entry.createdAt,
+                    paymentId: entry.paymentId,
+                })),
+            },
+            generatedAt: new Date(),
+        };
+
+        res.json({ success: true, data: responsePayload });
+    } catch (error) {
+        console.error('Finance dashboard error:', error);
+        res.status(500).json({ success: false, message: 'Unable to load finance dashboard' });
+    }
+};
+
+export { uploadPayment, getPayments, approvePayment, declinePayment, deletePayment, upload, getPaymentById, getFinanceDashboardMetrics };

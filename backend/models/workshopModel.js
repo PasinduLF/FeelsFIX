@@ -23,7 +23,7 @@ const workshopSchema = new mongoose.Schema(
     priceType: { type: String, enum: ['free', 'paid'], default: 'free' },
     price: { type: Number, default: 0 },
     coverImage: { type: String, default: '' },
-  status: { type: String, enum: STATUS_VALUES, default: STATUS.READY },
+    status: { type: String, enum: STATUS_VALUES, default: STATUS.READY },
     publishedAt: { type: Date },
     savedAt: { type: Date },
     updatedAt: { type: Date },

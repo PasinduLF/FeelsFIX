@@ -15,6 +15,7 @@ import {
   getWorkshopPaymentConfig,
   createWorkshopPaymentIntent,
   updateRegistrationDecision,
+  updateRegistrationDecisionBatch,
   updateWorkshop,
 } from '../controllers/workshopController.js'
 
@@ -24,6 +25,7 @@ router.get('/public', getPublicWorkshops)
 router.get('/public/:id', getPublicWorkshopById)
 router.get('/registrations/me', authUser, getMyWorkshopRegistrations)
 router.get('/registrations', authAdmin, getAllWorkshopRegistrations)
+router.patch('/registrations/decision-batch', authAdmin, updateRegistrationDecisionBatch)
 router.patch('/registrations/:registrationId/decision', authAdmin, updateRegistrationDecision)
 router.get('/', authAdmin, getWorkshops)
 router.get('/payment/config', getWorkshopPaymentConfig)

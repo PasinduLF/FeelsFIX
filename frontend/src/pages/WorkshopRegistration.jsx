@@ -1,36 +1,66 @@
-import { useContext, useEffect, useMemo, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { toast } from 'react-toastify'
 import Spinner from '../components/Spinner'
 import { AppContext } from '../context/AppContext'
 import WorkshopInvoiceCard from '../components/workshops/WorkshopInvoiceCard'
+import {
+	formatDateLabel,
+	formatDurationLabel,
+	formatTimeLabel,
+	getPriceLabel,
+	getSeatsMeta,
+	getStatusBadges,
+	isRegistrationOpen,
+} from '../utils/workshopHelpers'
 
-const formatDate = (value) => {
-	if (!value) return 'Date TBA'
-	const parsed = new Date(value)
-	if (Number.isNaN(parsed.getTime())) return value
-	return parsed.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+const badgeToneClasses = {
+	indigo: 'bg-indigo-50 text-indigo-600 border-indigo-100',
+	emerald: 'bg-emerald-50 text-emerald-600 border-emerald-100',
+	amber: 'bg-amber-50 text-amber-700 border-amber-100',
+	rose: 'bg-rose-50 text-rose-600 border-rose-100',
+	slate: 'bg-slate-100 text-slate-600 border-slate-200',
 }
 
-const formatTime = (value) => {
-	if (!value) return 'Time TBA'
-	const [hrs, mins] = value.split(':').map((segment) => Number(segment))
-	if (Number.isNaN(hrs) || Number.isNaN(mins)) return value
-	const date = new Date()
-	date.setHours(hrs)
-	date.setMinutes(mins)
-	return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-}
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+const PHONE_REGEX = /^[+()\-\d\s]{7,20}$/
+const NOTES_MAX_LENGTH = 600
 
-const formatDuration = (minutes) => {
-	const total = Number(minutes)
-	if (!Number.isFinite(total) || total <= 0) return 'Duration TBA'
-	const hrs = Math.floor(total / 60)
-	const mins = total % 60
-	if (hrs && mins) return `${hrs}h ${mins}m`
-	if (hrs) return `${hrs}h`
-	return `${mins}m`
+const getStorageKey = (workshopId) => (workshopId ? `workshopRegistration:${workshopId}` : '')
+
+const validateForm = (values) => {
+	const errors = {}
+	const fullName = values.fullName.trim()
+	const email = values.email.trim().toLowerCase()
+	const phone = values.phone.trim()
+	const notes = values.notes.trim()
+
+	if (!fullName) {
+		errors.fullName = 'Full name is required'
+	} else if (fullName.length < 2) {
+		errors.fullName = 'Full name must include at least 2 characters'
+	} else if (fullName.length > 80) {
+		errors.fullName = 'Full name must be under 80 characters'
+	}
+
+	if (!email) {
+		errors.email = 'Email is required'
+	} else if (!EMAIL_REGEX.test(email)) {
+		errors.email = 'Enter a valid email address'
+	}
+
+	if (!phone) {
+		errors.phone = 'Phone number is required'
+	} else if (!PHONE_REGEX.test(phone)) {
+		errors.phone = 'Use digits, +, and simple separators only'
+	}
+
+	if (notes.length > NOTES_MAX_LENGTH) {
+		errors.notes = `Notes must be under ${NOTES_MAX_LENGTH} characters`
+	}
+
+	return errors
 }
 
 const WorkshopRegistrationForm = () => {
@@ -47,6 +77,28 @@ const WorkshopRegistrationForm = () => {
 		phone: '',
 		notes: '',
 	})
+	const [errors, setErrors] = useState({})
+	const [resumeAvailable, setResumeAvailable] = useState(false)
+	const hasHydratedDraft = useRef(false)
+	const storageKey = useMemo(() => getStorageKey(workshopId), [workshopId])
+
+	const persistDraft = useCallback((payload) => {
+		if (!storageKey) return
+		try {
+			sessionStorage.setItem(storageKey, JSON.stringify(payload))
+		} catch (err) {
+			console.warn('Unable to persist registration form', err)
+		}
+	}, [storageKey])
+
+	const clearDraft = useCallback(() => {
+		if (!storageKey) return
+		try {
+			sessionStorage.removeItem(storageKey)
+		} catch (err) {
+			console.warn('Unable to clear stored registration form', err)
+		}
+	}, [storageKey])
 
 	useEffect(() => {
 		if (workshop || !backendUrl) return
@@ -69,20 +121,55 @@ const WorkshopRegistrationForm = () => {
 		fetchWorkshop()
 	}, [backendUrl, workshop, workshopId])
 
+	useEffect(() => {
+		if (!storageKey || hasHydratedDraft.current) return
+		try {
+			const stored = sessionStorage.getItem(storageKey)
+			if (stored) {
+				const parsed = JSON.parse(stored)
+				setFormData((prev) => ({ ...prev, ...parsed }))
+				setResumeAvailable(true)
+			}
+			hasHydratedDraft.current = true
+		} catch (error) {
+			console.warn('Unable to hydrate saved registration', error)
+		}
+	}, [storageKey])
+
 	const handleChange = (event) => {
 		const { name, value } = event.target
-		setFormData((prev) => ({ ...prev, [name]: value }))
+		setFormData((prev) => {
+			const next = { ...prev, [name]: value }
+			persistDraft(next)
+			return next
+		})
+		setErrors((prev) => ({ ...prev, [name]: '' }))
 	}
 
 	const priceLabel = useMemo(() => {
-		if (!workshop || workshop.priceType !== 'paid') return 'Free session'
-		return `Paid • Rs ${Number(workshop.price || 0).toFixed(2)}`
+		if (!workshop) return 'Free session'
+		const label = getPriceLabel(workshop)
+		return workshop.priceType === 'paid' ? `Paid • ${label}` : 'Free session'
 	}, [workshop])
 
 	const handleSubmit = async (event) => {
 		event.preventDefault()
 		if (!backendUrl) {
 			toast.error('Backend unavailable. Please try again later.')
+			return
+		}
+		if (!workshop) {
+			toast.error('Workshop details are still loading. Please wait a moment.')
+			return
+		}
+		const registrationClosed = !isRegistrationOpen(workshop)
+		if (registrationClosed) {
+			toast.info('Registration is closed for this workshop.')
+			return
+		}
+		const validationErrors = validateForm(formData)
+		if (Object.keys(validationErrors).length) {
+			setErrors(validationErrors)
 			return
 		}
 		setSubmitting(true)
@@ -96,12 +183,7 @@ const WorkshopRegistrationForm = () => {
 			const config = token ? { headers: { token } } : undefined
 			const isPaidWorkshop = workshop?.priceType === 'paid'
 			if (isPaidWorkshop) {
-				// Save form data and redirect to the dedicated payment page
-				try {
-					sessionStorage.setItem(`workshopRegistration:${workshopId}`, JSON.stringify(payload))
-				} catch (err) {
-					console.warn('Unable to persist registration form', err)
-				}
+				persistDraft(payload)
 				navigate(`/workshops/${workshopId}/payment`, { state: { workshop } })
 				setSubmitting(false)
 				return
@@ -109,6 +191,8 @@ const WorkshopRegistrationForm = () => {
 
 			const { data } = await axios.post(`${backendUrl}/api/workshops/${workshopId}/register`, payload, config)
 			if (data.success) {
+				clearDraft()
+				setResumeAvailable(false)
 				toast.success('Registration received! We will email you the session details shortly.')
 				navigate('/my-workshops')
 			} else {
@@ -140,10 +224,12 @@ const WorkshopRegistrationForm = () => {
 		)
 	}
 
-	const seatsLeft = Math.max(0, (Number(workshop.capacity) || 0) - (Number(workshop.enrolled) || 0))
+	const { seatsLeft } = getSeatsMeta(workshop)
 	const isPaidWorkshop = workshop?.priceType === 'paid'
 	const submitLabel = isPaidWorkshop ? 'Continue to payment' : 'Submit registration'
-	const submitDisabled = submitting
+	const registrationClosed = workshop ? !isRegistrationOpen(workshop) : false
+	const submitDisabled = submitting || registrationClosed
+	const statusBadges = getStatusBadges(workshop)
 
 	return (
 		<div className='relative mt-6 mb-16 overflow-hidden rounded-[40px] bg-gradient-to-br from-indigo-50 via-white to-rose-50 p-1 shadow-[0_25px_70px_rgba(15,23,42,0.08)]'>
@@ -152,6 +238,15 @@ const WorkshopRegistrationForm = () => {
 					<p className='text-sm uppercase tracking-[0.3em] text-indigo-500'>Reserve a spot</p>
 					<h1 className='text-3xl font-semibold text-slate-900 mt-2'>{workshop.title}</h1>
 					<p className='text-slate-600 mt-2'>Share your contact information and we’ll confirm your seat via email.</p>
+
+					{resumeAvailable && (
+						<div className='mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700'>
+							<p className='font-medium'>We found your saved details. Pick up where you left off.</p>
+							<button type='button' onClick={() => { setFormData({ fullName: '', email: '', phone: '', notes: '' }); clearDraft(); setResumeAvailable(false) }} className='rounded-xl border border-emerald-300 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100'>
+								Start over
+							</button>
+						</div>
+					)}
 
 					<form onSubmit={handleSubmit} className='mt-8 space-y-6'>
 						<div>
@@ -163,9 +258,10 @@ const WorkshopRegistrationForm = () => {
 								required
 								value={formData.fullName}
 								onChange={handleChange}
-								className='mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none'
+								className={`mt-2 w-full rounded-2xl border px-4 py-3 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none ${errors.fullName ? 'border-rose-300' : 'border-slate-200'}`}
 								placeholder='Jane Doe'
 							/>
+							{errors.fullName && <p className='mt-1 text-xs text-rose-600'>{errors.fullName}</p>}
 						</div>
 						<div className='grid gap-4 md:grid-cols-2'>
 							<div>
@@ -177,9 +273,10 @@ const WorkshopRegistrationForm = () => {
 									required
 									value={formData.email}
 									onChange={handleChange}
-									className='mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none'
+									className={`mt-2 w-full rounded-2xl border px-4 py-3 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none ${errors.email ? 'border-rose-300' : 'border-slate-200'}`}
 									placeholder='you@example.com'
 								/>
+								{errors.email && <p className='mt-1 text-xs text-rose-600'>{errors.email}</p>}
 							</div>
 							<div>
 								<label htmlFor='phone' className='text-sm font-medium text-slate-700'>Phone</label>
@@ -190,9 +287,10 @@ const WorkshopRegistrationForm = () => {
 									required
 									value={formData.phone}
 									onChange={handleChange}
-									className='mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none'
+									className={`mt-2 w-full rounded-2xl border px-4 py-3 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none ${errors.phone ? 'border-rose-300' : 'border-slate-200'}`}
 									placeholder='+94 70 123 4567'
 								/>
+								{errors.phone && <p className='mt-1 text-xs text-rose-600'>{errors.phone}</p>}
 							</div>
 						</div>
 						<div>
@@ -203,9 +301,11 @@ const WorkshopRegistrationForm = () => {
 								rows={4}
 								value={formData.notes}
 								onChange={handleChange}
-								className='mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none'
+								maxLength={NOTES_MAX_LENGTH}
+								className={`mt-2 w-full rounded-2xl border px-4 py-3 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none ${errors.notes ? 'border-rose-300' : 'border-slate-200'}`}
 								placeholder='Share goals, accessibility needs, or preferred topics.'
 							/>
+							{errors.notes && <p className='mt-1 text-xs text-rose-600'>{errors.notes}</p>}
 						</div>
 						{isPaidWorkshop && (
 							<div className='space-y-4 rounded-2xl border border-indigo-100 bg-indigo-50/40 px-5 py-4'>
@@ -217,10 +317,13 @@ const WorkshopRegistrationForm = () => {
 						<button
 							type='submit'
 							disabled={submitDisabled}
-							className={`w-full rounded-2xl py-3 text-white font-semibold transition ${submitDisabled ? 'bg-indigo-300 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+							className={`w-full rounded-2xl py-3 text-white font-semibold transition ${submitDisabled ? 'bg-slate-300 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}
 						>
 							{submitLabel}
 						</button>
+						{registrationClosed && (
+							<p className='text-xs text-slate-500 text-center'>Registration is currently closed. Check back for future cohorts.</p>
+						)}
 					</form>
 				</div>
 
@@ -230,7 +333,11 @@ const WorkshopRegistrationForm = () => {
 							<img src={workshop.coverImage} alt={workshop.title} className='w-full h-44 object-cover rounded-2xl mb-4 shadow-md' />
 						)}
 						<div className='flex flex-wrap gap-2 text-xs font-semibold'>
-							<span className='px-3 py-1 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100'>Upcoming</span>
+							{statusBadges.map((badge) => (
+								<span key={`${badge.label}-${badge.intent}`} className={`px-3 py-1 rounded-full border ${badgeToneClasses[badge.intent] || badgeToneClasses.slate}`}>
+									{badge.label}
+								</span>
+							))}
 							<span className='px-3 py-1 rounded-full bg-rose-50 text-rose-600 border border-rose-100'>{priceLabel}</span>
 						</div>
 						<div className='mt-4 space-y-3 text-sm text-slate-600'>
@@ -240,15 +347,15 @@ const WorkshopRegistrationForm = () => {
 						</div>
 						<div className='flex items-center justify-between'>
 							<span className='font-medium text-slate-500'>Date</span>
-							<span>{formatDate(workshop.date)}</span>
+							<span>{formatDateLabel(workshop.date)}</span>
 						</div>
 						<div className='flex items-center justify-between'>
 							<span className='font-medium text-slate-500'>Time</span>
-							<span>{formatTime(workshop.startTime)}</span>
+							<span>{formatTimeLabel(workshop.startTime)}</span>
 						</div>
 									<div className='flex items-center justify-between'>
 										<span className='font-medium text-slate-500'>Duration</span>
-										<span>{formatDuration(workshop.durationMinutes)}</span>
+									<span>{formatDurationLabel(workshop.durationMinutes)}</span>
 									</div>
 						<div className='flex items-center justify-between'>
 							<span className='font-medium text-slate-500'>Seats left</span>

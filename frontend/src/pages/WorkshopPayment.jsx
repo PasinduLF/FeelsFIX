@@ -3,10 +3,12 @@ import { useNavigate, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { toast } from 'react-toastify'
 import { loadStripe } from '@stripe/stripe-js'
-import { Elements, CardElement, useElements, useStripe } from '@stripe/react-stripe-js'
+import { Elements, CardNumberElement, CardExpiryElement, CardCvcElement, useElements, useStripe } from '@stripe/react-stripe-js'
 import Spinner from '../components/Spinner'
 import { AppContext } from '../context/AppContext'
 import WorkshopInvoiceCard from '../components/workshops/WorkshopInvoiceCard'
+import { assets } from '../assets/assets'
+import { formatDateLabel, formatDurationLabel, formatTimeLabel, getSeatsMeta } from '../utils/workshopHelpers'
 
 const paymentMethods = [
   { label: 'Card', value: 'card', enabled: true },
@@ -15,36 +17,51 @@ const paymentMethods = [
 ]
 
 const cardBrands = [
-  { label: 'Mastercard', colors: ['#f79e1b', '#ff5f6d'] },
-  { label: 'Visa', colors: ['#1a1f71', '#4f6bed'] },
-  { label: 'Amex', colors: ['#2e77bb', '#6dc1ff'] },
+  { label: 'Mastercard', image: assets.mastercard_logo },
+  { label: 'Visa', image: assets.visa_logo },
+  { label: 'Amex', image: assets.amex_logo },
 ]
 
-const formatLongDate = (value) => {
-  if (!value) return 'Date TBA'
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return 'Date TBA'
-  return parsed.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+const cardElementStyles = {
+  style: {
+    base: {
+      fontSize: '16px',
+      color: '#0f172a',
+      '::placeholder': {
+        color: '#94a3b8',
+      },
+      fontFamily: 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    },
+  },
+  showIcon: true,
+  iconStyle: 'solid',
 }
 
-const formatTimeLabel = (value) => {
-  if (!value) return 'Time TBA'
-  const [hours, minutes] = value.split(':').map((segment) => Number(segment))
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) return value
-  const date = new Date()
-  date.setHours(hours)
-  date.setMinutes(minutes)
-  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+const paymentErrorSuggestions = {
+  card: 'Please double-check your card details or try a different card.',
+  network: 'Check your internet connection and try again.',
+  backend: 'Our server could not confirm the registration. Please retry in a moment or contact support.',
+  generic: 'You can retry or reach out to support if the issue persists.',
 }
 
-const formatDurationLabel = (minutes) => {
-  const duration = Number(minutes)
-  if (!Number.isFinite(duration) || duration <= 0) return 'Duration TBA'
-  const hrs = Math.floor(duration / 60)
-  const mins = duration % 60
-  if (hrs && mins) return `${hrs}h ${mins}m`
-  if (hrs) return `${hrs}h`
-  return `${mins}m`
+const derivePaymentError = (error) => {
+  if (!error) {
+    return { category: 'generic', message: 'Something went wrong. Please try again.' }
+  }
+  if (error?.type === 'card_error' || error?.code === 'card_declined') {
+    return { category: 'card', message: error.message || 'Your card was declined.' }
+  }
+  if (error?.type === 'validation_error') {
+    return { category: 'card', message: error.message || 'The card details look invalid.' }
+  }
+  const isAxiosLike = typeof error === 'object' && error !== null && (error?.isAxiosError || error?.response || error?.request)
+  if (isAxiosLike) {
+    if (error?.response) {
+      return { category: 'backend', message: error.response?.data?.message || 'The server rejected the request after payment.' }
+    }
+    return { category: 'network', message: 'Network error. Please check your connection.' }
+  }
+  return { category: 'generic', message: error?.message || 'Unable to complete payment.' }
 }
 
 const GatewayErrorPanel = ({ message, onRetry, retrying }) => (
@@ -71,6 +88,49 @@ const PaymentForm = ({ clientSecret, formData, workshop, token, backendUrl }) =>
   const navigate = useNavigate()
   const [processing, setProcessing] = useState(false)
   const [method, setMethod] = useState('card')
+  const [paymentState, setPaymentState] = useState('idle')
+  const [inlineError, setInlineError] = useState(null)
+
+  const confirmPaymentIntent = useCallback(async () => {
+    if (!stripe || !elements) throw new Error('Payment system is still loading. Please wait a moment.')
+    const cardNumberElement = elements.getElement(CardNumberElement)
+    if (!cardNumberElement) throw new Error('Card input not available')
+
+    let result = await stripe.confirmCardPayment(clientSecret, {
+      payment_method: {
+        card: cardNumberElement,
+        billing_details: {
+          name: formData.fullName,
+          email: formData.email,
+          phone: formData.phone,
+        },
+      },
+    })
+
+    if (result.error) {
+      const needsAction = result.error.payment_intent?.status === 'requires_action'
+      if (!needsAction) {
+        throw result.error
+      }
+      result = await stripe.confirmCardPayment(clientSecret)
+    }
+
+    let paymentIntent = result.paymentIntent
+
+    if (paymentIntent?.status === 'requires_action') {
+      const actionResult = await stripe.confirmCardPayment(clientSecret)
+      if (actionResult.error) {
+        throw actionResult.error
+      }
+      paymentIntent = actionResult.paymentIntent
+    }
+
+    if (!paymentIntent || paymentIntent.status !== 'succeeded') {
+      throw new Error('Payment did not complete successfully.')
+    }
+
+    return paymentIntent
+  }, [clientSecret, elements, formData.email, formData.fullName, formData.phone, stripe])
 
   const handlePay = async (e) => {
     e.preventDefault()
@@ -79,30 +139,14 @@ const PaymentForm = ({ clientSecret, formData, workshop, token, backendUrl }) =>
       return
     }
     setProcessing(true)
+    setInlineError(null)
+    setPaymentState('processing')
     try {
-      const card = elements.getElement(CardElement)
-      if (!card) throw new Error('Card input not available')
-
-      const confirmation = await stripe.confirmCardPayment(clientSecret, {
-        payment_method: {
-          card,
-          billing_details: {
-            name: formData.fullName,
-            email: formData.email,
-            phone: formData.phone,
-          },
-        },
-      })
-
-      if (confirmation.error) {
-        throw new Error(confirmation.error.message || 'Payment confirmation failed')
-      }
-
-      const paymentIntentId = confirmation.paymentIntent?.id
-      if (!paymentIntentId) throw new Error('Payment did not complete successfully')
+      const paymentIntent = await confirmPaymentIntent()
 
       const config = token ? { headers: { token } } : undefined
-      const payload = { ...formData, paymentIntentId }
+      const payload = { ...formData, paymentIntentId: paymentIntent.id }
+      setPaymentState('finalizing')
       const { data } = await axios.post(`${backendUrl}/api/workshops/${workshop._id || workshop.id}/register`, payload, config)
       if (data.success) {
         try {
@@ -110,13 +154,18 @@ const PaymentForm = ({ clientSecret, formData, workshop, token, backendUrl }) =>
         } catch (clearError) {
           console.warn('Unable to clear saved workshop registration data', clearError)
         }
+        setPaymentState('succeeded')
         toast.success('Payment successful and registration complete. See My Workshops for details.')
         navigate('/my-workshops')
       } else {
         throw new Error(data.message || 'Registration failed after payment')
       }
     } catch (err) {
-      toast.error(err?.message || 'Unable to complete payment')
+      const friendly = derivePaymentError(err)
+      setInlineError(friendly)
+      setPaymentState('error')
+      const prefix = friendly.category === 'card' ? 'Card error: ' : friendly.category === 'network' ? 'Network issue: ' : friendly.category === 'backend' ? 'Server issue: ' : ''
+      toast.error(`${prefix}${friendly.message}`)
     } finally {
       setProcessing(false)
     }
@@ -161,20 +210,31 @@ const PaymentForm = ({ clientSecret, formData, workshop, token, backendUrl }) =>
 
         <div className='flex flex-wrap gap-3'>
           {cardBrands.map((brand) => (
-            <span
-              key={brand.label}
-              className='flex h-10 items-center rounded-full px-4 text-sm font-semibold text-white'
-              style={{ background: `linear-gradient(120deg, ${brand.colors[0]}, ${brand.colors[1]})` }}
-            >
-              {brand.label}
+            <span key={brand.label} className='flex h-12 items-center rounded-2xl border border-slate-200 bg-slate-50 px-4 py-1 shadow-sm'>
+              <img src={brand.image} alt={brand.label} className='h-8 w-auto object-contain' loading='lazy' />
             </span>
           ))}
         </div>
 
         <div>
           <label className='text-sm font-medium text-slate-700'>Card details</label>
-          <div className='mt-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4'>
-            <CardElement options={{ hidePostalCode: true }} />
+          <div className='mt-2 rounded-2xl border border-slate-200 bg-slate-50'>
+            <div className='flex items-center gap-3 border-b border-slate-200 px-4 py-3'>
+              <CardNumberElement options={{ ...cardElementStyles, showIcon: true }} className='flex-1' />
+              <button type='button' onClick={() => toast.info('Autofill requires your browser wallet.')} className='rounded-xl bg-emerald-600 px-3 py-1 text-xs font-semibold text-white shadow hover:bg-emerald-700'>
+                Autofill link
+              </button>
+            </div>
+            <div className='grid grid-cols-2 gap-0 border-t border-slate-100'>
+              <div className='border-r border-slate-100 px-4 py-3'>
+                <p className='text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1'>Expiry (MM/YY)</p>
+                <CardExpiryElement options={cardElementStyles} />
+              </div>
+              <div className='px-4 py-3'>
+                <p className='text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1'>CVC</p>
+                <CardCvcElement options={cardElementStyles} />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -191,6 +251,25 @@ const PaymentForm = ({ clientSecret, formData, workshop, token, backendUrl }) =>
             {processing ? 'Processing…' : `Pay ${priceLabel}`}
           </button>
         </div>
+
+        {paymentState === 'processing' && (
+          <p className='text-xs text-slate-500 text-center'>Processing payment… do not refresh this page.</p>
+        )}
+        {paymentState === 'finalizing' && (
+          <p className='text-xs text-slate-500 text-center'>Payment succeeded. Finalizing your registration…</p>
+        )}
+        {inlineError && (
+          <div className='rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700'>
+            <p className='font-semibold'>
+              {inlineError.category === 'card' && 'Card error'}
+              {inlineError.category === 'network' && 'Network issue'}
+              {inlineError.category === 'backend' && 'Server issue'}
+              {inlineError.category === 'generic' && 'Payment error'}
+            </p>
+            <p className='mt-1'>{inlineError.message}</p>
+            <p className='mt-2 text-xs text-rose-600'>{paymentErrorSuggestions[inlineError.category] || paymentErrorSuggestions.generic}</p>
+          </div>
+        )}
       </div>
     </form>
   )
@@ -285,9 +364,9 @@ const WorkshopPayment = () => {
   if (loading) return <div className='py-16'><Spinner /></div>
   if (!formData) return null
 
-  const seatsLeft = Math.max(0, (Number(workshop?.capacity) || 0) - (Number(workshop?.enrolled) || 0))
+  const { seatsLeft, capacity } = getSeatsMeta(workshop || {})
   const infoTiles = [
-    { label: 'Date', value: formatLongDate(workshop?.date) },
+    { label: 'Date', value: formatDateLabel(workshop?.date) },
     { label: 'Time', value: formatTimeLabel(workshop?.startTime) },
     { label: 'Duration', value: formatDurationLabel(workshop?.durationMinutes) },
     { label: 'Seats left', value: seatsLeft ? `${seatsLeft} seats` : 'Waitlist' },
@@ -355,15 +434,36 @@ const WorkshopPayment = () => {
         <div className='rounded-3xl border border-slate-100 bg-white p-6 shadow-[0_25px_60px_rgba(15,23,42,0.05)] space-y-6'>
           <div>
             <p className='text-base font-semibold text-slate-900'>Order summary</p>
-            <p className='text-sm text-slate-500'>Double-check the workshop details before confirming payment.</p>
+            <p className='text-sm text-slate-500'>Review everything before you confirm payment.</p>
+          </div>
+          <div className='rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-700 space-y-4'>
+            <div className='flex flex-wrap items-start justify-between gap-4'>
+              <div>
+                <p className='text-xs uppercase tracking-wide text-slate-500'>Workshop</p>
+                <p className='text-lg font-semibold text-slate-900'>{workshop?.title || 'Workshop TBA'}</p>
+                <p>{formatDateLabel(workshop?.date)} · {formatTimeLabel(workshop?.startTime)}</p>
+                <p>{formatDurationLabel(workshop?.durationMinutes)}</p>
+              </div>
+              <div className='text-right'>
+                <p className='text-xs uppercase tracking-wide text-slate-500'>Seats</p>
+                <p className='font-semibold text-slate-900'>{seatsLeft > 0 ? `${seatsLeft} available` : 'Waitlist only'}</p>
+                {capacity ? <p className='text-xs text-slate-500'>{capacity} total</p> : <p className='text-xs text-slate-500'>Capacity not limited</p>}
+              </div>
+            </div>
+            <div className='grid gap-4 sm:grid-cols-2'>
+              <div>
+                <p className='text-xs uppercase tracking-wide text-slate-500'>Price</p>
+                <p className='font-semibold text-slate-900'>{priceHighlight}</p>
+              </div>
+              <div>
+                <p className='text-xs uppercase tracking-wide text-slate-500'>Attendee</p>
+                <p className='font-semibold text-slate-900'>{formData.fullName}</p>
+                <p className='text-xs text-slate-500'>{formData.email}</p>
+                <p className='text-xs text-slate-500'>{formData.phone}</p>
+              </div>
+            </div>
           </div>
           <WorkshopInvoiceCard workshop={workshop || {}} />
-          <div className='rounded-2xl bg-slate-50 p-4 text-sm text-slate-600'>
-            <p className='font-semibold text-slate-700'>Attendee</p>
-            <p className='mt-2 text-slate-800'>{formData.fullName}</p>
-            <p className='text-xs text-slate-500'>{formData.email}</p>
-            <p className='text-xs text-slate-500'>{formData.phone}</p>
-          </div>
         </div>
       </section>
     </div>

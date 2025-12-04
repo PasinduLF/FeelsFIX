@@ -1,6 +1,6 @@
 import mongoose from 'mongoose'
 
-const REGISTRATION_TIMELINE_STATUS = ['upcoming', 'completed', 'cancelled']
+const REGISTRATION_TIMELINE_STATUS = ['upcoming', 'completed', 'cancelled', 'waitlist']
 const REGISTRATION_DECISION_STATUS = ['pending', 'approved', 'declined']
 
 const workshopRegistrationSchema = new mongoose.Schema(
@@ -21,6 +21,18 @@ const workshopRegistrationSchema = new mongoose.Schema(
     decisionNote: { type: String, default: '' },
     decidedAt: { type: Date },
     decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'admin' },
+    waitlisted: { type: Boolean, default: false },
+    paymentIntentId: { type: String, default: null },
+    paymentStatus: {
+      type: String,
+      enum: ['pending', 'requires_action', 'processing', 'succeeded', 'failed', 'refunded'],
+      default: 'pending',
+    },
+    paymentAmount: { type: Number, default: 0 },
+    paymentCurrency: { type: String, default: '' },
+    paymentMethodType: { type: String, default: '' },
+    processedByWebhook: { type: Boolean, default: false },
+    metadata: { type: Object, default: {} },
   },
   { timestamps: true }
 )
@@ -28,6 +40,7 @@ const workshopRegistrationSchema = new mongoose.Schema(
 workshopRegistrationSchema.index({ workshop: 1, email: 1 })
 workshopRegistrationSchema.index({ user: 1, createdAt: -1 })
 workshopRegistrationSchema.index({ decisionStatus: 1 })
+workshopRegistrationSchema.index({ paymentIntentId: 1 }, { unique: true, sparse: true })
 
 const WorkshopRegistrationModel =
   mongoose.models.workshop_registration || mongoose.model('workshop_registration', workshopRegistrationSchema)
