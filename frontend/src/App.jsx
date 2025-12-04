@@ -25,6 +25,7 @@ import TermsOfService from './pages/TermsOfService'
 import CookiePolicy from './pages/CookiePolicy'
 import MyWorkshops from './pages/MyWorkshops'
 import WorkshopRegistration from './pages/WorkshopRegistration'
+import WorkshopPayment from './pages/WorkshopPayment'
 
 function App() {
   return (
@@ -45,6 +46,7 @@ function App() {
         <Route path='/appointment/:docId' element={<Appointment/>}/>
         <Route path='/workshops' element={<Workshop/>}/>
   <Route path='/workshops/:workshopId/register' element={<WorkshopRegistration />}/>
+        <Route path='/workshops/:workshopId/payment' element={<WorkshopPayment />}/>
         <Route path='/blogs' element={<Blogs/>}/>
         <Route path='/payment/:appointmentId' element={<Payment/>}/>
         <Route path="/contact/create" element={<ContactForm />} />

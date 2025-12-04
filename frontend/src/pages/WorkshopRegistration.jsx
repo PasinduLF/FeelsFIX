@@ -2,75 +2,9 @@ import { useContext, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { toast } from 'react-toastify'
-import { Elements, CardNumberElement, CardExpiryElement, CardCvcElement, useElements, useStripe } from '@stripe/react-stripe-js'
-import { loadStripe } from '@stripe/stripe-js'
 import Spinner from '../components/Spinner'
 import { AppContext } from '../context/AppContext'
-
-const formatCurrency = (amount = 0) => {
-	const formatter = new Intl.NumberFormat('en-US', {
-		style: 'currency',
-		currency: 'LKR',
-		minimumFractionDigits: 2,
-	})
-	return formatter.format(Number(amount) || 0)
-}
-
-const DummyCardPreview = () => (
-	<div className='rounded-[28px] border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-6 shadow-[0_20px_50px_rgba(15,23,42,0.05)] space-y-5'>
-		<div>
-			<p className='text-sm font-semibold text-slate-700'>Invoice</p>
-			<div className='mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-600'>
-				{['VISA', 'Mastercard', 'JCB', 'AmEx'].map((brand) => (
-					<span key={brand} className='rounded-full border border-slate-200 px-3 py-1 bg-white shadow-[0_4px_12px_rgba(148,163,184,0.25)]'>
-						{brand}
-					</span>
-				))}
-			</div>
-		</div>
-		<div className='space-y-3'>
-			<label className='text-xs font-medium text-slate-500'>Card number</label>
-			<div className='rounded-2xl border-[1.5px] border-white bg-slate-100 px-4 py-3 text-slate-400 shadow-inner'>1234 5678 9012 3456</div>
-		</div>
-		<div className='space-y-3'>
-			<label className='text-xs font-medium text-slate-500'>Name on card</label>
-			<div className='rounded-2xl border-[1.5px] border-white bg-slate-100 px-4 py-3 text-slate-400 shadow-inner'>Ex. John Website</div>
-		</div>
-		<div className='grid gap-3 md:grid-cols-2'>
-			<div className='space-y-3'>
-				<label className='text-xs font-medium text-slate-500'>Expiry date</label>
-				<div className='rounded-2xl border-[1.5px] border-white bg-slate-100 px-4 py-3 text-slate-400 shadow-inner'>01 / 19</div>
-			</div>
-			<div className='space-y-3'>
-				<label className='text-xs font-medium text-slate-500'>Security code</label>
-				<div className='rounded-2xl border-[1.5px] border-white bg-slate-100 px-4 py-3 text-slate-400 shadow-inner'>•••</div>
-			</div>
-		</div>
-		<button type='button' className='w-full rounded-2xl bg-indigo-100 py-2 text-indigo-600 font-semibold cursor-not-allowed shadow-inner'>Next</button>
-	</div>
-)
-
-const InvoiceBreakdown = ({ workshop }) => {
-	const price = Number(workshop?.price || 0)
-	const serviceFee = 0
-	const total = price + serviceFee
-	return (
-		<div className='rounded-2xl border border-slate-200 bg-white/80 backdrop-blur px-5 py-4 shadow-sm text-sm text-slate-600'>
-			<div className='flex items-center justify-between pb-3 border-b border-slate-100'>
-				<span>Workshop fee</span>
-				<span className='font-semibold text-slate-900'>{formatCurrency(price)}</span>
-			</div>
-			<div className='flex items-center justify-between py-3'>
-				<span>Service fee</span>
-				<span className='font-semibold text-slate-900'>{formatCurrency(serviceFee)}</span>
-			</div>
-			<div className='mt-2 flex items-center justify-between rounded-xl bg-indigo-50 px-4 py-3 font-semibold text-indigo-700'>
-				<span>Due today</span>
-				<span>{formatCurrency(total)}</span>
-			</div>
-		</div>
-	)
-}
+import WorkshopInvoiceCard from '../components/workshops/WorkshopInvoiceCard'
 
 const formatDate = (value) => {
 	if (!value) return 'Date TBA'
@@ -99,23 +33,19 @@ const formatDuration = (minutes) => {
 	return `${mins}m`
 }
 
-const WorkshopRegistrationForm = ({ gatewayStatus }) => {
+const WorkshopRegistrationForm = () => {
 	const { workshopId } = useParams()
 	const navigate = useNavigate()
 	const location = useLocation()
 	const { backendUrl, token } = useContext(AppContext)
-	const stripe = useStripe()
-	const elements = useElements()
 	const [workshop, setWorkshop] = useState(location.state?.workshop || null)
 	const [loading, setLoading] = useState(!location.state?.workshop)
 	const [submitting, setSubmitting] = useState(false)
-	const [paymentInProgress, setPaymentInProgress] = useState(false)
 	const [formData, setFormData] = useState({
 		fullName: '',
 		email: '',
 		phone: '',
 		notes: '',
-		cardName: '',
 	})
 
 	useEffect(() => {
@@ -164,65 +94,20 @@ const WorkshopRegistrationForm = ({ gatewayStatus }) => {
 				notes: formData.notes.trim(),
 			}
 			const config = token ? { headers: { token } } : undefined
-			let paymentIntentId = null
 			const isPaidWorkshop = workshop?.priceType === 'paid'
 			if (isPaidWorkshop) {
-				if (!stripe || !elements) {
-					toast.error('Payment gateway still loading. Please wait a moment.')
-					setSubmitting(false)
-					return
-				}
-				if (!gatewayStatus?.configured) {
-					toast.error(gatewayStatus?.message || 'Payment gateway is not configured.')
-					setSubmitting(false)
-					return
-				}
-				setPaymentInProgress(true)
+				// Save form data and redirect to the dedicated payment page
 				try {
-					const intentResponse = await axios.post(
-						`${backendUrl}/api/workshops/${workshopId}/payment-intent`,
-						payload,
-						config
-					)
-					if (!intentResponse.data?.success) {
-						throw new Error(intentResponse.data?.message || 'Unable to initiate payment')
-					}
-					const cardElement = elements.getElement(CardNumberElement)
-					const expiryElement = elements.getElement(CardExpiryElement)
-					const cvcElement = elements.getElement(CardCvcElement)
-					if (!cardElement) {
-						throw new Error('Unable to load card input. Please refresh and try again.')
-					}
-					const cardholderName = formData.cardName.trim() || payload.fullName
-					const confirmation = await stripe.confirmCardPayment(intentResponse.data.clientSecret, {
-						payment_method: {
-							card: cardElement,
-							billing_details: {
-								name: cardholderName,
-								email: payload.email,
-								phone: payload.phone,
-							},
-						},
-					})
-					if (confirmation.error) {
-						throw new Error(confirmation.error.message)
-					}
-					paymentIntentId = confirmation.paymentIntent.id
-					cardElement.clear()
-					expiryElement?.clear?.()
-					cvcElement?.clear?.()
-				} catch (paymentError) {
-					toast.error(paymentError?.message || 'Payment failed. Please try again.')
-					setPaymentInProgress(false)
-					setSubmitting(false)
-					return
-				} finally {
-					setPaymentInProgress(false)
+					sessionStorage.setItem(`workshopRegistration:${workshopId}`, JSON.stringify(payload))
+				} catch (err) {
+					console.warn('Unable to persist registration form', err)
 				}
+				navigate(`/workshops/${workshopId}/payment`, { state: { workshop } })
+				setSubmitting(false)
+				return
 			}
 
-			const registrationPayload = paymentIntentId ? { ...payload, paymentIntentId } : payload
-			const { data } = await axios.post(`${backendUrl}/api/workshops/${workshopId}/register`, registrationPayload, config)
+			const { data } = await axios.post(`${backendUrl}/api/workshops/${workshopId}/register`, payload, config)
 			if (data.success) {
 				toast.success('Registration received! We will email you the session details shortly.')
 				navigate('/my-workshops')
@@ -257,20 +142,8 @@ const WorkshopRegistrationForm = ({ gatewayStatus }) => {
 
 	const seatsLeft = Math.max(0, (Number(workshop.capacity) || 0) - (Number(workshop.enrolled) || 0))
 	const isPaidWorkshop = workshop?.priceType === 'paid'
-	const submitLabel = isPaidWorkshop ? (paymentInProgress ? 'Processing payment…' : 'Pay & reserve seat') : 'Submit registration'
-	const stripeReady = Boolean(stripe) && Boolean(elements)
-	const submitDisabled =
-		submitting ||
-		paymentInProgress ||
-		(isPaidWorkshop && (gatewayStatus?.loading || !gatewayStatus?.configured || !stripeReady))
-	const showGatewayWarning = isPaidWorkshop && gatewayStatus?.configured === false
-
-	const brandBadges = [
-		{ label: 'VISA', bg: 'bg-slate-100', text: 'text-slate-700' },
-		{ label: 'Mastercard', bg: 'bg-slate-100', text: 'text-slate-700' },
-		{ label: 'JCB', bg: 'bg-slate-100', text: 'text-slate-700' },
-		{ label: 'AmEx', bg: 'bg-slate-100', text: 'text-slate-700' },
-	]
+	const submitLabel = isPaidWorkshop ? 'Continue to payment' : 'Submit registration'
+	const submitDisabled = submitting
 
 	return (
 		<div className='relative mt-6 mb-16 overflow-hidden rounded-[40px] bg-gradient-to-br from-indigo-50 via-white to-rose-50 p-1 shadow-[0_25px_70px_rgba(15,23,42,0.08)]'>
@@ -335,103 +208,11 @@ const WorkshopRegistrationForm = ({ gatewayStatus }) => {
 							/>
 						</div>
 						{isPaidWorkshop && (
-							gatewayStatus?.configured ? (
-								<div className='space-y-4'>
-									<label className='text-sm font-medium text-slate-700'>Card payment</label>
-									<div className='rounded-2xl border border-slate-200 px-4 py-4 bg-white space-y-4 focus-within:border-indigo-400'>
-										<div className='flex flex-wrap gap-2 text-xs font-semibold text-slate-600'>
-											{brandBadges.map((brand) => (
-												<span key={brand.label} className={`rounded-full px-3 py-1 ${brand.bg} ${brand.text}`}>
-													{brand.label}
-												</span>
-											))}
-										</div>
-										<div className='space-y-2'>
-											<label className='text-xs font-medium text-slate-500'>Card number</label>
-											<div className='rounded-xl border border-slate-200 px-3 py-2 bg-slate-50'>
-												<CardNumberElement
-													options={{
-														placeholder: '1234 5678 9012 3456',
-														style: {
-															base: {
-																fontSize: '16px',
-																color: '#0f172a',
-																'::placeholder': { color: '#94a3b8' },
-															},
-															invalid: { color: '#dc2626' },
-														},
-													}}
-												/>
-											</div>
-										</div>
-										<div className='space-y-2'>
-											<label htmlFor='cardName' className='text-xs font-medium text-slate-500'>Name on card</label>
-											<input
-												id='cardName'
-												name='cardName'
-												type='text'
-												required
-												value={formData.cardName}
-												onChange={handleChange}
-												placeholder='Ex. John Website'
-												className='w-full rounded-xl border border-slate-200 px-3 py-2 bg-slate-50 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none'
-											/>
-										</div>
-										<div className='grid gap-3 md:grid-cols-2'>
-											<div className='space-y-2'>
-												<label className='text-xs font-medium text-slate-500'>Expiry date</label>
-												<div className='rounded-xl border border-slate-200 px-3 py-2 bg-slate-50'>
-													<CardExpiryElement
-														options={{
-															placeholder: 'MM / YY',
-															style: {
-																base: {
-																	fontSize: '15px',
-																	color: '#0f172a',
-																	'::placeholder': { color: '#94a3b8' },
-																},
-																invalid: { color: '#dc2626' },
-															},
-														}}
-													/>
-												</div>
-											</div>
-											<div className='space-y-2'>
-												<label className='text-xs font-medium text-slate-500'>Security code</label>
-												<div className='rounded-xl border border-slate-200 px-3 py-2 bg-slate-50'>
-													<CardCvcElement
-														options={{
-															placeholder: 'CVC',
-															style: {
-																base: {
-																	fontSize: '15px',
-																	color: '#0f172a',
-																	'::placeholder': { color: '#94a3b8' },
-																},
-																invalid: { color: '#dc2626' },
-															},
-														}}
-													/>
-												</div>
-											</div>
-										</div>
-									</div>
-									<p className='text-sm text-slate-500'>You'll be charged <span className='font-semibold text-slate-900'>Rs {Number(workshop.price || 0).toFixed(2)}</span> once the payment succeeds.</p>
-									<InvoiceBreakdown workshop={workshop} />
-								</div>
-							) : (
-								<div className='space-y-3'>
-									<label className='text-sm font-medium text-slate-700'>Card payment (demo preview)</label>
-									<DummyCardPreview />
-									<p className='text-sm text-slate-500'>Live card processing isn’t connected yet. This preview illustrates how payments will look once the gateway is enabled.</p>
-									{showGatewayWarning && (
-										<p className='text-sm text-rose-500'>
-											{gatewayStatus?.message || "Payment gateway isn't configured yet. Contact support to complete paid registrations."}
-										</p>
-									)}
-									<InvoiceBreakdown workshop={workshop} />
-								</div>
-							)
+							<div className='space-y-4 rounded-2xl border border-indigo-100 bg-indigo-50/40 px-5 py-4'>
+								<p className='text-sm font-medium text-slate-700'>This is a paid workshop.</p>
+								<p className='text-sm text-slate-500'>After you submit your details, we’ll take you to a secure payment page to finish reserving your seat.</p>
+								<WorkshopInvoiceCard workshop={workshop} />
+							</div>
 						)}
 						<button
 							type='submit'
@@ -493,54 +274,8 @@ const WorkshopRegistrationForm = ({ gatewayStatus }) => {
 }
 
 const WorkshopRegistration = () => {
-	const { backendUrl } = useContext(AppContext)
-	const [stripePromise, setStripePromise] = useState(null)
-	const [gatewayStatus, setGatewayStatus] = useState({ loading: true, configured: null, message: '' })
-
-	useEffect(() => {
-		let isMounted = true
-
-		const fetchGatewayConfig = async () => {
-			if (!backendUrl) {
-				setGatewayStatus({ loading: false, configured: false, message: 'Backend unavailable. Please try again later.' })
-				return
-			}
-			setGatewayStatus((prev) => ({ ...prev, loading: true }))
-			try {
-				const { data } = await axios.get(`${backendUrl}/api/workshops/payment/config`)
-				if (!isMounted) return
-				if (data.success && data.data?.publishableKey) {
-					setStripePromise(loadStripe(data.data.publishableKey))
-					setGatewayStatus({ loading: false, configured: true, message: '' })
-				} else {
-					setGatewayStatus({
-						loading: false,
-						configured: false,
-						message: data.message || 'Payment gateway is not configured.',
-					})
-				}
-			} catch (error) {
-				if (!isMounted) return
-				setGatewayStatus({
-					loading: false,
-					configured: false,
-					message: error?.response?.data?.message || error?.message || 'Unable to reach payment gateway.',
-				})
-			}
-		}
-
-		fetchGatewayConfig()
-
-		return () => {
-			isMounted = false
-		}
-	}, [backendUrl])
-
-	return (
-		<Elements stripe={stripePromise}>
-			<WorkshopRegistrationForm gatewayStatus={gatewayStatus} />
-		</Elements>
-	)
+	// The registration page only collects attendee details. Paid workshops continue to a separate payment page.
+	return <WorkshopRegistrationForm />
 }
 
 export default WorkshopRegistration

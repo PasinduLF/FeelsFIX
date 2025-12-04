@@ -3,9 +3,13 @@ import Stripe from 'stripe'
 import WorkshopModel, { WORKSHOP_STATUS as STATUS } from '../models/workshopModel.js'
 import WorkshopRegistrationModel from '../models/workshopRegistrationModel.js'
 
-const stripeSecret = process.env.STRIPE_SECRET_KEY || ''
-const stripeCurrency = process.env.STRIPE_CURRENCY || 'usd'
-const stripePublishableKey = process.env.STRIPE_PUBLISHABLE_KEY || process.env.STRIPE_PUBLIC_KEY || ''
+const DEFAULT_STRIPE_PUBLISHABLE_KEY = 'pk_test_51SaUlLGsnHBQEtELEXOjrwQKzYSnhqwtHIqHRt6p2xgnW88rGpVHDdoDGEucI5HmqN3mXYHAVAMLme4U6noKDxcI00581SsjAo'
+const DEFAULT_STRIPE_SECRET_KEY = 'sk_test_51SaUlLGsnHBQEtELDU59944GY3Jv0oqtgdsFzQHVXA3qRi60A3u3xJu7yfUq0yN2zoVQ8ouMmpaJzwscQBx46iWa00pGUhkkls'
+const DEFAULT_STRIPE_CURRENCY = 'lkr'
+
+const stripeSecret = process.env.STRIPE_SECRET_KEY || DEFAULT_STRIPE_SECRET_KEY
+const stripeCurrency = process.env.STRIPE_CURRENCY || DEFAULT_STRIPE_CURRENCY
+const stripePublishableKey = process.env.STRIPE_PUBLISHABLE_KEY || process.env.STRIPE_PUBLIC_KEY || DEFAULT_STRIPE_PUBLISHABLE_KEY
 const stripe = stripeSecret ? new Stripe(stripeSecret) : null
 
 const DEFAULT_DURATION_MINUTES = 60
@@ -24,22 +28,36 @@ const toDateOrNull = (value) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
-const isPastDate = (value) => {
-  if (!value) return false
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return false
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  parsed.setHours(0, 0, 0, 0)
-  return parsed < today
+const buildSessionDateTime = (dateValue, startTime) => {
+  if (!dateValue) return null
+  const parsedDate = new Date(dateValue)
+  if (Number.isNaN(parsedDate.getTime())) return null
+  if (!startTime) return parsedDate
+
+  const match = startTime.match(/(\d{1,2}):(\d{2})(?:\s*(am|pm))?/i)
+  if (!match) return parsedDate
+  let hours = Number(match[1])
+  const minutes = Number(match[2])
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return parsedDate
+  const meridian = match[3]?.toLowerCase()
+  if (meridian === 'pm' && hours < 12) hours += 12
+  if (meridian === 'am' && hours === 12) hours = 0
+  parsedDate.setHours(hours, minutes, 0, 0)
+  return parsedDate
 }
 
-const ensureStatus = (requestedStatus, date) => {
+const isPastSession = (dateValue, startTime) => {
+  const sessionDate = buildSessionDateTime(dateValue, startTime)
+  if (!sessionDate) return false
+  return sessionDate.getTime() < Date.now()
+}
+
+const ensureStatus = (requestedStatus, date, startTime) => {
   const normalizedStatus = typeof requestedStatus === 'string' ? requestedStatus.toLowerCase() : requestedStatus
   if (!normalizedStatus) return STATUS.READY
   if ([STATUS.DRAFT, STATUS.CANCELLED].includes(normalizedStatus)) return normalizedStatus
   if (normalizedStatus === STATUS.COMPLETED) return STATUS.COMPLETED
-  if (normalizedStatus === STATUS.UPCOMING && isPastDate(date)) {
+  if (normalizedStatus === STATUS.UPCOMING && isPastSession(date, startTime)) {
     return STATUS.COMPLETED
   }
   if (normalizedStatus === STATUS.UPCOMING) return STATUS.UPCOMING
@@ -78,7 +96,7 @@ const sanitizeWorkshopPayload = (payload = {}, { isDraft = false, targetStatus }
     if (!coverImage) throw new Error('Please upload a cover image before publishing.')
   }
 
-  const status = ensureStatus(targetStatus || payload.status || STATUS.READY, date)
+  const status = ensureStatus(targetStatus || payload.status || STATUS.READY, date, startTime)
 
   return {
     title,
@@ -99,7 +117,7 @@ const sanitizeWorkshopPayload = (payload = {}, { isDraft = false, targetStatus }
 const formatWorkshopResponse = (workshopDoc) => {
   if (!workshopDoc) return null
   const workshop = workshopDoc.toObject ? workshopDoc.toObject() : workshopDoc
-  const derivedStatus = ensureStatus(workshop.status, workshop.date)
+  const derivedStatus = ensureStatus(workshop.status, workshop.date, workshop.startTime)
   return {
     ...workshop,
     id: workshop._id?.toString?.() || workshop.id,
@@ -125,12 +143,13 @@ const ensureStripeClient = () => {
 const deriveRegistrationStatus = (registrationDoc, workshopDoc) => {
   if (!registrationDoc) return 'upcoming'
   if (registrationDoc.status === 'cancelled') return 'cancelled'
-  const workshopStatus = workshopDoc ? ensureStatus(workshopDoc.status, workshopDoc.date) : null
+  const workshopStatus = workshopDoc ? ensureStatus(workshopDoc.status, workshopDoc.date, workshopDoc.startTime) : null
   if (workshopStatus === STATUS.CANCELLED) return 'cancelled'
   if (workshopStatus === STATUS.COMPLETED) return 'completed'
   const referenceDate = workshopDoc?.date || registrationDoc.workshopDate
+  const referenceTime = workshopDoc?.startTime || registrationDoc.workshopStartTime
   if (!referenceDate) return 'upcoming'
-  return new Date(referenceDate) < new Date() ? 'completed' : 'upcoming'
+  return isPastSession(referenceDate, referenceTime) ? 'completed' : 'upcoming'
 }
 
 const getUserIdFromHeaders = (req) => {
@@ -181,9 +200,23 @@ export const getWorkshops = async (req, res) => {
 export const getPublicWorkshops = async (req, res) => {
   try {
     const { status } = req.query
-    const allowedStatuses = status ? [status] : [STATUS.UPCOMING]
-    const workshops = await WorkshopModel.find({ status: { $in: allowedStatuses } }).sort({ date: 1, startTime: 1 })
-    res.json({ success: true, data: workshops.map(formatWorkshopResponse) })
+    const requestedStatuses = Array.isArray(status)
+      ? status.map((value) => value?.toString()?.toLowerCase?.() || '')
+      : status
+        ? [status?.toString()?.toLowerCase?.()]
+        : [STATUS.UPCOMING]
+
+    // When the public listing asks for upcoming sessions we still want to fetch READY
+    // ones from Mongo because they may flip to UPCOMING dynamically at runtime.
+    const queryStatuses = requestedStatuses.includes(STATUS.UPCOMING) || requestedStatuses.includes(STATUS.READY)
+      ? [STATUS.UPCOMING, STATUS.READY]
+      : requestedStatuses
+
+    const workshops = await WorkshopModel.find({ status: { $in: queryStatuses } }).sort({ date: 1, startTime: 1 })
+    const enriched = workshops.map(formatWorkshopResponse)
+    const filtered = enriched.filter((workshop) => requestedStatuses.includes(workshop.status))
+
+    res.json({ success: true, data: filtered })
   } catch (error) {
     handleControllerError(res, error, 'Unable to fetch workshops')
   }
@@ -195,7 +228,7 @@ export const getPublicWorkshopById = async (req, res) => {
     if (!workshop) {
       return res.status(404).json({ success: false, message: 'Workshop not found' })
     }
-    const derivedStatus = ensureStatus(workshop.status, workshop.date)
+    const derivedStatus = ensureStatus(workshop.status, workshop.date, workshop.startTime)
     if (![STATUS.UPCOMING, STATUS.READY].includes(derivedStatus)) {
       return res.status(400).json({ success: false, message: 'Workshop is not open for registration' })
     }
@@ -279,7 +312,7 @@ export const registerForWorkshop = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Workshop not found' })
     }
 
-    const currentStatus = ensureStatus(workshop.status, workshop.date)
+    const currentStatus = ensureStatus(workshop.status, workshop.date, workshop.startTime)
     const isOpenForRegistration = [STATUS.UPCOMING, STATUS.READY].includes(currentStatus)
     if (!isOpenForRegistration) {
       return res.status(400).json({ success: false, message: 'This workshop is not open for registration yet.' })
