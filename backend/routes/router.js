@@ -6,7 +6,8 @@ import {
     declinePayment,
     deletePayment,
     upload,
-    getPaymentById 
+    getPaymentById,
+    getFinanceDashboardMetrics,
 } from '../controllers/payment-controller.js';
 import { createRefund, getRefunds, updateRefundStatus, deleteRefund, completeRefund } from '../controllers/refund-controller.js';
 
@@ -17,6 +18,9 @@ router.post('/payments/upload', upload.single('file'), uploadPayment);
 
 // Route to fetch all payment records
 router.get('/payments', getPayments);
+
+// Route to fetch finance dashboard metrics
+router.get('/payments/finance-dashboard', getFinanceDashboardMetrics);
 
 // Route to fetch a single payment by ID
 router.get('/payments/:id', getPaymentById);

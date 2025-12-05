@@ -21,6 +21,7 @@ import UserManagement from './pages/Admin/UserManagement';
 import AddWorkshop from './pages/Admin/AddWorkshop';
 import WorkshopBars from './pages/Admin/WorkshopBars';
 import WorkshopRegistrations from './pages/Admin/WorkshopRegistrations';
+import FinanceDashboard from './pages/Admin/FinanceDashboard';
 
 const App = () => {
 
@@ -43,6 +44,7 @@ const {dToken} = useContext(DoctorContext)
           <Route path='/doctor-list' element={<DoctorsList/>} />
           <Route path='/workshop-bars' element={<WorkshopBars/>} />
           <Route path='/workshop-registrations' element={<WorkshopRegistrations />} />
+          <Route path='/finance-dashboard' element={<FinanceDashboard />} />
           <Route path="/inquiry" element={<Inquiry />} />
           <Route path="/contact/details/:id" element={<ShowContact />} />
           <Route path="/contact/delete/:id" element={<DeleteContact />} />

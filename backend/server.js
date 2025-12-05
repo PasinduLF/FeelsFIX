@@ -9,12 +9,16 @@ import userRouter from './routes/userRoute.js'
 import contactRouter from './routes/contact.js'
 import paymentRoutes from './routes/router.js'
 import workshopRoutes from './routes/workshopRoute.js'
+import { handleWorkshopPaymentWebhook } from './controllers/workshopController.js'
 
 //app config
 const app = express()
 const port = process.env.PORT || 4000
 connectDB()
 connectCloudinary()
+
+//webhook endpoint needs the raw body before we enable JSON parsing
+app.post('/api/workshops/payment/webhook', express.raw({ type: 'application/json' }), handleWorkshopPaymentWebhook)
 
 //middlewares
 app.use(express.json())

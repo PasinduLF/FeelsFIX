@@ -2,104 +2,29 @@ import jwt from 'jsonwebtoken'
 import Stripe from 'stripe'
 import WorkshopModel, { WORKSHOP_STATUS as STATUS } from '../models/workshopModel.js'
 import WorkshopRegistrationModel from '../models/workshopRegistrationModel.js'
+import { ensureWorkshopStatus, deriveRegistrationTimelineStatus } from '../utils/workshopStatus.js'
+import { normalizeWorkshopPayload } from '../utils/workshopValidation.js'
 
-const stripeSecret = process.env.STRIPE_SECRET_KEY || ''
-const stripeCurrency = process.env.STRIPE_CURRENCY || 'usd'
-const stripePublishableKey = process.env.STRIPE_PUBLISHABLE_KEY || process.env.STRIPE_PUBLIC_KEY || ''
+const DEFAULT_STRIPE_PUBLISHABLE_KEY = 'pk_test_51SaUlLGsnHBQEtELEXOjrwQKzYSnhqwtHIqHRt6p2xgnW88rGpVHDdoDGEucI5HmqN3mXYHAVAMLme4U6noKDxcI00581SsjAo'
+const DEFAULT_STRIPE_SECRET_KEY = 'sk_test_51SaUlLGsnHBQEtELDU59944GY3Jv0oqtgdsFzQHVXA3qRi60A3u3xJu7yfUq0yN2zoVQ8ouMmpaJzwscQBx46iWa00pGUhkkls'
+const DEFAULT_STRIPE_CURRENCY = 'lkr'
+
+const stripeSecret = process.env.STRIPE_SECRET_KEY || DEFAULT_STRIPE_SECRET_KEY
+const stripeCurrency = process.env.STRIPE_CURRENCY || DEFAULT_STRIPE_CURRENCY
+const stripePublishableKey = process.env.STRIPE_PUBLISHABLE_KEY || process.env.STRIPE_PUBLIC_KEY || DEFAULT_STRIPE_PUBLISHABLE_KEY
+const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET || ''
 const stripe = stripeSecret ? new Stripe(stripeSecret) : null
 
-const DEFAULT_DURATION_MINUTES = 60
-const MIN_DURATION_MINUTES = 15
-
-const asNumber = (value, fallback = 0) => {
-  const parsed = Number(value)
-  return Number.isNaN(parsed) ? fallback : parsed
-}
-
-const normalizeString = (value, fallback = '') => (value ? String(value).trim() : fallback)
-
-const toDateOrNull = (value) => {
-  if (!value) return null
-  const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? null : parsed
-}
-
-const isPastDate = (value) => {
-  if (!value) return false
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return false
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  parsed.setHours(0, 0, 0, 0)
-  return parsed < today
-}
-
-const ensureStatus = (requestedStatus, date) => {
-  const normalizedStatus = typeof requestedStatus === 'string' ? requestedStatus.toLowerCase() : requestedStatus
-  if (!normalizedStatus) return STATUS.READY
-  if ([STATUS.DRAFT, STATUS.CANCELLED].includes(normalizedStatus)) return normalizedStatus
-  if (normalizedStatus === STATUS.COMPLETED) return STATUS.COMPLETED
-  if (normalizedStatus === STATUS.UPCOMING && isPastDate(date)) {
-    return STATUS.COMPLETED
-  }
-  if (normalizedStatus === STATUS.UPCOMING) return STATUS.UPCOMING
-  if (normalizedStatus === STATUS.READY) return STATUS.READY
-  return STATUS.READY
-}
-
-const sanitizeWorkshopPayload = (payload = {}, { isDraft = false, targetStatus } = {}) => {
-  const title = normalizeString(payload.title)
-  const facilitator = normalizeString(payload.facilitator, 'Facilitator TBA')
-  const description = normalizeString(payload.description)
-  const date = toDateOrNull(payload.date)
-  const startTime = normalizeString(payload.startTime)
-  const durationMinutes = asNumber(payload.durationMinutes, DEFAULT_DURATION_MINUTES)
-  const capacity = asNumber(payload.capacity, 0)
-  const enrolled = Math.max(0, Math.min(capacity, asNumber(payload.enrolled, 0)))
-  const priceType = payload.priceType === 'paid' ? 'paid' : 'free'
-  const price = priceType === 'paid' ? Math.max(0, asNumber(payload.price, 0)) : 0
-  const coverImage = payload.coverImage || ''
-
-  if (!title) {
-    throw new Error('Please provide a workshop title.')
-  }
-
-  const requiresFullDetails = !isDraft
-  if (requiresFullDetails) {
-    if (!date) throw new Error('Please choose a valid date for this workshop.')
-    if (!startTime) throw new Error('Please include a session start time.')
-    if (durationMinutes < MIN_DURATION_MINUTES) {
-      throw new Error(`Duration must be at least ${MIN_DURATION_MINUTES} minutes.`)
-    }
-    if (capacity <= 0) throw new Error('Capacity must be greater than zero.')
-    if (priceType === 'paid' && price <= 0) {
-      throw new Error('Paid workshops require a price greater than zero.')
-    }
-    if (!coverImage) throw new Error('Please upload a cover image before publishing.')
-  }
-
-  const status = ensureStatus(targetStatus || payload.status || STATUS.READY, date)
-
-  return {
-    title,
-    facilitator,
-    description,
-    date,
-    startTime,
-    durationMinutes: durationMinutes > 0 ? durationMinutes : DEFAULT_DURATION_MINUTES,
-    capacity: capacity > 0 ? capacity : 0,
-    enrolled,
-    priceType,
-    price,
-    coverImage,
-    status,
-  }
+const deriveWorkshopPayload = (payload, options = {}) => {
+  const normalized = normalizeWorkshopPayload(payload, options)
+  const ensuredStatus = ensureWorkshopStatus(normalized.status, normalized.date, normalized.startTime)
+  return { ...normalized, status: ensuredStatus }
 }
 
 const formatWorkshopResponse = (workshopDoc) => {
   if (!workshopDoc) return null
   const workshop = workshopDoc.toObject ? workshopDoc.toObject() : workshopDoc
-  const derivedStatus = ensureStatus(workshop.status, workshop.date)
+  const derivedStatus = ensureWorkshopStatus(workshop.status, workshop.date, workshop.startTime)
   return {
     ...workshop,
     id: workshop._id?.toString?.() || workshop.id,
@@ -122,17 +47,6 @@ const ensureStripeClient = () => {
   return stripe
 }
 
-const deriveRegistrationStatus = (registrationDoc, workshopDoc) => {
-  if (!registrationDoc) return 'upcoming'
-  if (registrationDoc.status === 'cancelled') return 'cancelled'
-  const workshopStatus = workshopDoc ? ensureStatus(workshopDoc.status, workshopDoc.date) : null
-  if (workshopStatus === STATUS.CANCELLED) return 'cancelled'
-  if (workshopStatus === STATUS.COMPLETED) return 'completed'
-  const referenceDate = workshopDoc?.date || registrationDoc.workshopDate
-  if (!referenceDate) return 'upcoming'
-  return new Date(referenceDate) < new Date() ? 'completed' : 'upcoming'
-}
-
 const getUserIdFromHeaders = (req) => {
   const token = req.headers?.token
   if (!token) return null
@@ -147,7 +61,7 @@ const getUserIdFromHeaders = (req) => {
 export const createWorkshop = async (req, res) => {
   try {
     const isDraft = req.body?.status === STATUS.DRAFT
-    const payload = sanitizeWorkshopPayload(req.body, { isDraft, targetStatus: req.body?.status })
+    const payload = deriveWorkshopPayload(req.body, { isDraft, targetStatus: req.body?.status })
     const workshop = await WorkshopModel.create({
       ...payload,
       savedAt: new Date(),
@@ -181,9 +95,26 @@ export const getWorkshops = async (req, res) => {
 export const getPublicWorkshops = async (req, res) => {
   try {
     const { status } = req.query
-    const allowedStatuses = status ? [status] : [STATUS.UPCOMING]
-    const workshops = await WorkshopModel.find({ status: { $in: allowedStatuses } }).sort({ date: 1, startTime: 1 })
-    res.json({ success: true, data: workshops.map(formatWorkshopResponse) })
+    const requestedStatuses = Array.isArray(status)
+      ? status.map((value) => value?.toString()?.toLowerCase?.() || '')
+      : status
+        ? [status?.toString()?.toLowerCase?.()]
+        : [STATUS.UPCOMING]
+
+    // When the public listing asks for upcoming sessions we still want to fetch READY
+    // ones from Mongo because they may flip to UPCOMING dynamically at runtime.
+    const queryStatuses = requestedStatuses.includes(STATUS.UPCOMING) || requestedStatuses.includes(STATUS.READY)
+      ? [STATUS.UPCOMING, STATUS.READY]
+      : requestedStatuses
+
+    const workshops = await WorkshopModel.find({ status: { $in: queryStatuses } }).sort({ date: 1, startTime: 1 })
+    const enriched = workshops.map(formatWorkshopResponse)
+    const filtered = enriched.filter((workshop) => {
+      if (requestedStatuses.includes(workshop.status)) return true
+      return workshop.status === STATUS.READY && requestedStatuses.includes(STATUS.UPCOMING)
+    })
+
+    res.json({ success: true, data: filtered })
   } catch (error) {
     handleControllerError(res, error, 'Unable to fetch workshops')
   }
@@ -195,7 +126,7 @@ export const getPublicWorkshopById = async (req, res) => {
     if (!workshop) {
       return res.status(404).json({ success: false, message: 'Workshop not found' })
     }
-    const derivedStatus = ensureStatus(workshop.status, workshop.date)
+    const derivedStatus = ensureWorkshopStatus(workshop.status, workshop.date, workshop.startTime)
     if (![STATUS.UPCOMING, STATUS.READY].includes(derivedStatus)) {
       return res.status(400).json({ success: false, message: 'Workshop is not open for registration' })
     }
@@ -224,7 +155,7 @@ export const updateWorkshop = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Workshop not found' })
     }
     const isDraft = (req.body?.status || existing.status) === STATUS.DRAFT
-    const payload = sanitizeWorkshopPayload({ ...existing.toObject(), ...req.body }, {
+    const payload = deriveWorkshopPayload({ ...existing.toObject(), ...req.body }, {
       isDraft,
       targetStatus: req.body?.status || existing.status,
     })
@@ -247,7 +178,7 @@ export const publishWorkshop = async (req, res) => {
     if (!workshop) {
       return res.status(404).json({ success: false, message: 'Workshop not found' })
     }
-    const payload = sanitizeWorkshopPayload({ ...workshop.toObject(), status: STATUS.UPCOMING }, { isDraft: false, targetStatus: STATUS.UPCOMING })
+    const payload = deriveWorkshopPayload({ ...workshop.toObject(), status: STATUS.UPCOMING }, { isDraft: false, targetStatus: STATUS.UPCOMING })
     workshop.set({ ...payload, publishedAt: workshop.publishedAt || new Date(), updatedAt: new Date() })
     await workshop.save()
     res.json({ success: true, data: formatWorkshopResponse(workshop) })
@@ -274,27 +205,24 @@ export const getWorkshopPaymentConfig = (req, res) => {
 
 export const registerForWorkshop = async (req, res) => {
   try {
-    const workshop = await WorkshopModel.findById(req.params.id)
+    let workshop = await WorkshopModel.findById(req.params.id)
     if (!workshop) {
       return res.status(404).json({ success: false, message: 'Workshop not found' })
     }
 
-    const currentStatus = ensureStatus(workshop.status, workshop.date)
+    const currentStatus = ensureWorkshopStatus(workshop.status, workshop.date, workshop.startTime)
     const isOpenForRegistration = [STATUS.UPCOMING, STATUS.READY].includes(currentStatus)
     if (!isOpenForRegistration) {
       return res.status(400).json({ success: false, message: 'This workshop is not open for registration yet.' })
     }
 
-    if (currentStatus === STATUS.READY) {
+    const statusChangedToUpcoming = currentStatus === STATUS.READY
+    if (statusChangedToUpcoming) {
       workshop.status = STATUS.UPCOMING
       workshop.publishedAt = workshop.publishedAt || new Date()
     }
 
-    if (workshop.capacity && workshop.enrolled >= workshop.capacity) {
-      return res.status(400).json({ success: false, message: 'This workshop is already full.' })
-    }
-
-    const { fullName, email, phone, notes } = req.body || {}
+    const { fullName, email, phone, notes, joinWaitlist } = req.body || {}
     const participantName = fullName?.toString().trim()
     const normalizedEmail = email?.toString().trim()?.toLowerCase()
     const normalizedPhone = phone?.toString().trim()
@@ -310,19 +238,86 @@ export const registerForWorkshop = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please provide a phone number.' })
     }
 
+    const shouldTrackCapacity = workshop.capacity && workshop.capacity > 0
+    const wantsWaitlist = Boolean(joinWaitlist)
+    let waitlisted = false
+    let seatReserved = !shouldTrackCapacity
+
+    if (shouldTrackCapacity) {
+      const updateDoc = {
+        $inc: { enrolled: 1 },
+        ...(statusChangedToUpcoming ? { $set: { status: workshop.status, publishedAt: workshop.publishedAt } } : {}),
+      }
+      const incremented = await WorkshopModel.findOneAndUpdate(
+        { _id: workshop._id, enrolled: { $lt: workshop.capacity } },
+        updateDoc,
+        { new: true }
+      )
+
+      if (incremented) {
+        seatReserved = true
+        workshop = incremented
+      } else if (!wantsWaitlist) {
+        return res.status(409).json({
+          success: false,
+          message: 'This workshop is already full. Resubmit with joinWaitlist=true to join the waiting list.',
+        })
+      } else {
+        waitlisted = true
+        if (statusChangedToUpcoming) {
+          await WorkshopModel.updateOne(
+            { _id: workshop._id },
+            { $set: { status: workshop.status, publishedAt: workshop.publishedAt } }
+          )
+        }
+      }
+    } else {
+      const updateDoc = {
+        $inc: { enrolled: 1 },
+        ...(statusChangedToUpcoming ? { $set: { status: workshop.status, publishedAt: workshop.publishedAt } } : {}),
+      }
+      workshop = await WorkshopModel.findByIdAndUpdate(workshop._id, updateDoc, { new: true })
+      seatReserved = true
+    }
+
+    let paymentIntentId = null
+    let paymentSnapshot = null
+    let paymentStatus = workshop.priceType === 'paid' ? 'pending' : 'succeeded'
+    let paymentAmount = 0
+    let paymentCurrency = stripeCurrency
+    let paymentMethodType = ''
+    let paymentMetadata = {}
+
     if (workshop.priceType === 'paid') {
       if (!stripe) {
         return res.status(500).json({ success: false, message: 'Payment gateway is not configured.' })
       }
-      const paymentIntentId = req.body?.paymentIntentId
+      paymentIntentId = req.body?.paymentIntentId
       if (!paymentIntentId) {
         return res.status(400).json({ success: false, message: 'Payment confirmation is required for paid workshops.' })
       }
-      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
+
+      const existingRegistration = await WorkshopRegistrationModel.findOne({ paymentIntentId })
+      if (existingRegistration) {
+        return res.json({ success: true, data: { id: existingRegistration._id, duplicate: true } })
+      }
+
+      paymentSnapshot = await stripe.paymentIntents.retrieve(paymentIntentId)
       const expectedAmount = Math.round(Number(workshop.price) * 100)
-      if (!paymentIntent || paymentIntent.status !== 'succeeded' || paymentIntent.amount_received < expectedAmount) {
+      if (
+        !paymentSnapshot ||
+        paymentSnapshot.status !== 'succeeded' ||
+        paymentSnapshot.amount_received < expectedAmount ||
+        (paymentSnapshot.metadata?.workshopId && paymentSnapshot.metadata.workshopId !== workshop._id.toString())
+      ) {
         return res.status(400).json({ success: false, message: 'Payment was not completed. Please try again.' })
       }
+
+      paymentStatus = paymentSnapshot.status
+      paymentAmount = paymentSnapshot.amount_received
+      paymentCurrency = paymentSnapshot.currency
+      paymentMethodType = paymentSnapshot.payment_method_types?.[0] || ''
+      paymentMetadata = paymentSnapshot.metadata || {}
     }
 
     const registration = await WorkshopRegistrationModel.create({
@@ -337,15 +332,19 @@ export const registerForWorkshop = async (req, res) => {
       email: normalizedEmail,
       phone: normalizedPhone,
       notes: normalizedNotes,
+      status: waitlisted ? 'waitlist' : 'upcoming',
+      waitlisted,
+      paymentIntentId,
+      paymentStatus,
+      paymentAmount,
+      paymentCurrency,
+      paymentMethodType,
+      metadata: paymentMetadata,
     })
 
-    const nextEnrolledCount = (workshop.enrolled || 0) + 1
-    if (workshop.capacity) {
-      workshop.enrolled = Math.min(workshop.capacity, nextEnrolledCount)
-    } else {
-      workshop.enrolled = nextEnrolledCount
+    if (waitlisted || !seatReserved) {
+      return res.json({ success: true, data: { id: registration._id, waitlisted: true } })
     }
-    await workshop.save()
 
     res.json({ success: true, data: { id: registration._id } })
   } catch (error) {
@@ -366,7 +365,7 @@ export const getMyWorkshopRegistrations = async (req, res) => {
 
     const data = registrations.map((registration) => {
       const workshopDoc = registration.workshop && registration.workshop._id ? registration.workshop : null
-      const derivedStatus = deriveRegistrationStatus(registration, workshopDoc)
+      const derivedStatus = deriveRegistrationTimelineStatus(registration, workshopDoc)
       const plainWorkshop = workshopDoc?.toObject ? workshopDoc.toObject() : workshopDoc
       return {
         id: registration._id,
@@ -380,6 +379,9 @@ export const getMyWorkshopRegistrations = async (req, res) => {
         status: derivedStatus,
         decisionStatus: registration.decisionStatus || 'pending',
         decisionNote: registration.decisionNote || '',
+        waitlisted: registration.waitlisted,
+        paymentStatus: registration.paymentStatus,
+        paymentIntentId: registration.paymentIntentId,
         createdAt: registration.createdAt,
         updatedAt: registration.updatedAt,
         priceType: plainWorkshop?.priceType || 'free',
@@ -395,10 +397,53 @@ export const getMyWorkshopRegistrations = async (req, res) => {
 
 export const getAllWorkshopRegistrations = async (req, res) => {
   try {
-    const registrations = await WorkshopRegistrationModel.find({})
-      .populate('workshop')
-      .populate('user', 'name email phone')
-      .sort({ createdAt: -1 })
+    const {
+      status,
+      decisionStatus,
+      workshopId,
+      participant,
+      page = 1,
+      pageSize = 25,
+    } = req.query
+
+    const query = {}
+    const normalizeArrayParam = (value) => {
+      if (!value) return null
+      return Array.isArray(value) ? value : [value]
+    }
+
+    const statusFilters = normalizeArrayParam(status)
+    if (statusFilters) {
+      query.status = { $in: statusFilters }
+    }
+
+    const decisionFilters = normalizeArrayParam(decisionStatus)
+    if (decisionFilters) {
+      query.decisionStatus = { $in: decisionFilters }
+    }
+
+    if (workshopId) {
+      query.workshop = workshopId
+    }
+
+    if (participant) {
+      const regex = new RegExp(participant, 'i')
+      query.$or = [{ participantName: regex }, { email: regex }, { phone: regex }]
+    }
+
+    const limit = Math.min(100, Math.max(1, Number(pageSize) || 25))
+    const pageNumber = Math.max(1, Number(page) || 1)
+    const skip = (pageNumber - 1) * limit
+
+    const [registrations, total] = await Promise.all([
+      WorkshopRegistrationModel.find(query)
+        .populate('workshop')
+        .populate('user', 'name email phone')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      WorkshopRegistrationModel.countDocuments(query),
+    ])
 
     const data = registrations.map((registration) => {
       const workshopDoc = registration.workshop && registration.workshop._id ? registration.workshop : null
@@ -418,13 +463,19 @@ export const getAllWorkshopRegistrations = async (req, res) => {
         notes: registration.notes,
         decisionStatus: registration.decisionStatus,
         decisionNote: registration.decisionNote,
-        status: deriveRegistrationStatus(registration, workshopDoc),
+        status: deriveRegistrationTimelineStatus(registration, workshopDoc),
+        waitlisted: registration.waitlisted,
+        paymentStatus: registration.paymentStatus,
+        paymentIntentId: registration.paymentIntentId,
+        paymentAmount: registration.paymentAmount,
+        paymentCurrency: registration.paymentCurrency,
+        paymentMethodType: registration.paymentMethodType,
         createdAt: registration.createdAt,
         updatedAt: registration.updatedAt,
       }
     })
 
-    res.json({ success: true, data })
+    res.json({ success: true, data, pagination: { page: pageNumber, pageSize: limit, total } })
   } catch (error) {
     handleControllerError(res, error, 'Unable to load registrations')
   }
@@ -446,14 +497,21 @@ export const createWorkshopPaymentIntent = async (req, res) => {
     }
 
     const { fullName, email } = req.body || {}
+    const userId = getUserIdFromHeaders(req)
+    const metadata = {
+      workshopId: workshop._id.toString(),
+      workshopTitle: workshop.title,
+      price: (amount / 100).toString(),
+      currency: stripeCurrency,
+    }
+    if (fullName) metadata.participantName = fullName
+    if (userId) metadata.userId = userId
+
     const paymentIntent = await stripeClient.paymentIntents.create({
       amount,
       currency: stripeCurrency,
       description: `Workshop registration - ${workshop.title}`,
-      metadata: {
-        workshopId: workshop._id.toString(),
-        workshopTitle: workshop.title,
-      },
+      metadata,
       receipt_email: email || undefined,
       automatic_payment_methods: { enabled: true },
     })
@@ -488,4 +546,73 @@ export const updateRegistrationDecision = async (req, res) => {
   } catch (error) {
     handleControllerError(res, error, 'Unable to update registration')
   }
+}
+
+export const updateRegistrationDecisionBatch = async (req, res) => {
+  try {
+    const { registrationIds, decisionStatus, decisionNote } = req.body || {}
+    if (!Array.isArray(registrationIds) || registrationIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'Provide at least one registration id.' })
+    }
+    const allowed = ['pending', 'approved', 'declined']
+    if (!allowed.includes(decisionStatus)) {
+      return res.status(400).json({ success: false, message: 'Invalid decision status' })
+    }
+
+    const result = await WorkshopRegistrationModel.updateMany(
+      { _id: { $in: registrationIds } },
+      {
+        $set: {
+          decisionStatus,
+          decisionNote: decisionNote || '',
+          decidedAt: new Date(),
+          decidedBy: req.body?.adminId || null,
+        },
+      }
+    )
+
+    res.json({ success: true, updated: result.modifiedCount })
+  } catch (error) {
+    handleControllerError(res, error, 'Unable to update registrations')
+  }
+}
+
+export const handleWorkshopPaymentWebhook = async (req, res) => {
+  if (!stripe || !stripeWebhookSecret) {
+    return res.status(503).json({ success: false, message: 'Stripe webhook is not configured.' })
+  }
+
+  const signature = req.headers['stripe-signature']
+  let event
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, signature, stripeWebhookSecret)
+  } catch (err) {
+    console.error('Stripe webhook signature verification failed', err)
+    return res.status(400).send(`Webhook Error: ${err.message}`)
+  }
+
+  const handleIntentUpdate = async (intent) => {
+    if (!intent?.id) return
+    const update = {
+      paymentStatus: intent.status,
+      paymentAmount: intent.amount_received || intent.amount || 0,
+      paymentCurrency: intent.currency,
+      paymentMethodType: intent.payment_method_types?.[0] || '',
+      processedByWebhook: true,
+    }
+    await WorkshopRegistrationModel.findOneAndUpdate({ paymentIntentId: intent.id }, { $set: update })
+  }
+
+  switch (event.type) {
+    case 'payment_intent.succeeded':
+    case 'payment_intent.payment_failed':
+    case 'payment_intent.processing':
+      await handleIntentUpdate(event.data.object)
+      break
+    default:
+      break
+  }
+
+  res.json({ received: true })
 }
